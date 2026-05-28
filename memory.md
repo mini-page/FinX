@@ -120,19 +120,7 @@ XPens/                                    ← rebranded from XPensa (2026-04-19)
 │   │               ├── transaction_card.dart
 │   │               ├── expense_category.dart
 │   │               ├── account_editor_sheet.dart
-│   │               ├── budget_editor_sheet.dart
-│   │               ├── category_editor_sheet.dart   # NEW
-│   │               ├── subscription_editor_sheet.dart
-│   │               ├── account_icons.dart
-│   │               ├── subscription_icons.dart
-│   │               ├── quick_action_bar.dart
-│   │               ├── power_pill_menu.dart
-│   │               ├── app_drawer.dart
-│   │               ├── amount_visibility.dart
-│   │               ├── ui_feedback.dart
-│   │               ├── recurring_tool_view.dart
-│   │               ├── split_bill_tool_view.dart
-│   │               └── index.dart
+│   │   └── expense/                        # Core feature
 │   ├── routes/
 │   │   ├── app_routes.dart             # Centralised navigation helpers
 │   │   └── index.dart
@@ -157,90 +145,103 @@ XPens/                                    ← rebranded from XPensa (2026-04-19)
 
 ## 2. File Classification
 
-### Screens (`lib/features/expense/presentation/screens/`)
+### Modular Features (`lib/features/`)
 
-Each large screen has a dedicated subdirectory `screens/<name>/` containing extracted private-widget files.
+Features are self-contained modules. Files are categorized under the respective feature directories:
 
-| File | Role | Sub-widgets directory |
-|------|------|-----------------------|
-| `app_shell.dart` | Root scaffold with IndexedStack + custom bottom nav | — |
-| `home_screen.dart` | Dashboard: hero stats, date strip, recent transactions | `home/` |
-| `stats_screen.dart` | Monthly analytics with charts | `stats/` |
-| `categories_screen.dart` | Spending by category + budget targets | `categories/` |
-| `accounts_screen.dart` | Account list, balance overview, tools tab | `accounts/` (incl. `tools_tab_widgets.dart`) |
-| `add_expense_screen.dart` | Create / edit a transaction (expense or income) | `add_expense/` (incl. `amount_expression.dart`) |
-| `records_history_screen.dart` | Full transaction history with filters | `records_history/` (incl. `records_search_logic.dart`) |
-| `transaction_search_screen.dart` | Fuzzy search across all transactions | — |
-| `settings_screen.dart` | App preferences, theme, backup / restore | `settings/` |
-| `onboarding_screen.dart` | First-run setup flow | — |
-| `scanner_screen.dart` | Legacy QR / UPI barcode scanner | — |
-| `upi_scanner_screen.dart` | Dedicated UPI QR scanner → auto-fills AddExpense | — |
-| `unified_scanner_screen.dart` | Entry point; routes to UPI / receipt / product scan mode | — |
-| `scan_mode_sheet.dart` | Bottom-sheet to choose scan mode | — |
-| `receipt_scanner_screen.dart` | Camera + OCR receipt parsing (scaffolded) | — |
-| `product_scanner_screen.dart` | Barcode → product price lookup via AI (scaffolded) | — |
-| `voice_entry_screen.dart` | Speech-to-expense entry (scaffolded) | — |
-| `pin_entry_screen.dart` | PIN creation + verification screen | — |
-| `notifications_screen.dart` | In-app notification list | — |
-| `about_screen.dart` | App version, credits, links | — |
-| `support_screen.dart` | FAQ, feedback, contact | — |
-| `profile_screen.dart` | User profile (mostly placeholder) | — |
-| `placeholder_screen.dart` | Generic "coming soon" stub | — |
-
-### Widgets (`lib/features/expense/presentation/widgets/`)
+#### Accounts (`lib/features/accounts/`)
 | File | Role |
 |------|------|
-| `transaction_card.dart` | Single transaction row with swipe-to-delete |
-| `expense_category.dart` | Category chip + icon helper |
-| `account_editor_sheet.dart` | Bottom-sheet for create/edit account |
-| `budget_editor_sheet.dart` | Bottom-sheet for set/edit category budget |
-| `subscription_editor_sheet.dart` | Bottom-sheet for recurring subscriptions |
-| `account_icons.dart` | Icon-key → IconData mapping for accounts |
-| `subscription_icons.dart` | Icon-key → IconData for subscriptions |
-| `quick_action_bar.dart` | Horizontal scrollable quick-action row |
-| `power_pill_menu.dart` | Floating pill FAB with expandable actions |
-| `app_drawer.dart` | Side drawer (Settings, profile header) |
-| `amount_visibility.dart` | Privacy-mode aware amount display |
-| `ui_feedback.dart` | Confirm dialog + bottom-sheet utilities |
-| `recurring_tool_view.dart` | Recurring-subscription manager sub-view |
-| `split_bill_tool_view.dart` | Bill-split calculator sub-view |
+| `data/models/account_model.dart` | `AccountModel` |
+| `data/datasource/account_local_datasource.dart` | `accounts` Hive box datasource |
+| `data/repositories/hive_account_repository.dart` | implementation of account repository |
+| `domain/repositories/account_repository.dart` | repository interface |
+| `presentation/provider/account_providers.dart` | `accountListProvider`, `accountControllerProvider` |
+| `presentation/screens/accounts_screen.dart` | accounts listing screen |
+| `presentation/screens/accounts/accounts_widgets.dart` | sub-widgets (tools tab view, card layout) |
+| `presentation/screens/accounts/tools_tab_widgets.dart` | tools view (split bill tool, etc.) |
+| `presentation/widgets/account_editor_sheet.dart` | bottom-sheet for create/edit account |
+| `presentation/widgets/account_icons.dart` | icon lookup mapping for accounts |
+| `presentation/widgets/split_bill_tool_view.dart` | bill-split calculator sub-view |
 
-### Models (`lib/features/expense/data/models/`)
-| File | Key Types |
-|------|-----------|
-| `expense_model.dart` | `ExpenseModel`, `TransactionType`, `ExpenseStats` |
-| `account_model.dart` | `AccountModel` |
-| `budget_model.dart` | `BudgetModel` |
-| `custom_category_model.dart` | `CustomCategoryModel` – user-defined categories |
-| `recurring_subscription_model.dart` | `RecurringSubscriptionModel` |
-| `app_preferences_model.dart` | `AppPreferencesModel` |
+#### Categories & Budgets (`lib/features/categories/`)
+| File | Role |
+|------|------|
+| `data/models/custom_category_model.dart` | `CustomCategoryModel` - user-defined categories |
+| `data/models/budget_model.dart` | `BudgetModel` |
+| `data/datasource/budget_local_datasource.dart` | `budgets` Hive box datasource |
+| `data/datasource/month_budget_local_datasource.dart` | month-budget Hive box datasource |
+| `data/repositories/hive_budget_repository.dart` | implementation of budget repository |
+| `domain/repositories/budget_repository.dart` | repository interface |
+| `presentation/provider/budget_providers.dart` | `budgetTargetsProvider`, `budgetControllerProvider` |
+| `presentation/provider/budget_state.dart` | selected month and budget calculation notifier |
+| `presentation/screens/categories_screen.dart` | categories budget tracking screen |
+| `presentation/screens/categories/categories_widgets.dart` | sub-widgets (category cards, grid layout) |
+| `presentation/screens/categories/budget_popup.dart` | set monthly budget bottom-sheet |
+| `presentation/widgets/category_editor_sheet.dart` | bottom-sheet for create/edit custom categories |
+| `presentation/widgets/budget_editor_sheet.dart` | bottom-sheet for set/edit category budget |
+| `presentation/widgets/expense_category.dart` | core category list and icon mapping |
 
-### Services / Datasources (`lib/features/expense/data/datasource/`)
-| File | Hive Box |
-|------|----------|
-| `expense_local_datasource.dart` | `expenses` box |
-| `account_local_datasource.dart` | `accounts` box |
-| `budget_local_datasource.dart` | `budgets` box |
-| `recurring_subscription_local_datasource.dart` | `recurring_subscriptions` box |
-| `preferences_local_datasource.dart` | `preferences` box |
-| `backup_local_datasource.dart` | JSON export/import helpers |
+#### Settings & Preferences (`lib/features/settings/`)
+| File | Role |
+|------|------|
+| `data/models/app_preferences_model.dart` | `AppPreferencesModel` |
+| `data/datasource/preferences_local_datasource.dart` | `preferences` Hive box datasource |
+| `data/datasource/backup_local_datasource.dart` | JSON export/import backup helper |
+| `data/repositories/hive_preferences_repository.dart` | implementation of preferences repository |
+| `domain/repositories/preferences_repository.dart` | repository interface |
+| `presentation/provider/preferences_providers.dart` | preferences and settings state providers |
+| `presentation/provider/backup_providers.dart` | backup controller and sync state |
+| `presentation/screens/settings_screen.dart` | app settings panel |
+| `presentation/screens/settings/settings_widgets.dart` | section headers, tiles, settings UI cards |
+| `presentation/screens/about_screen.dart` | app version, credits, and links screen |
+| `presentation/screens/support_screen.dart` | FAQ, feedback, and support links screen |
+| `presentation/screens/profile_screen.dart` | user profile overview screen |
+| `presentation/screens/onboarding_screen.dart` | first-run setup flow |
+| `presentation/screens/pin_entry_screen.dart` | security PIN entry screen |
 
-### Repositories
-| Layer | Directory |
-|-------|-----------|
-| Interfaces (domain) | `lib/features/expense/domain/repositories/` |
-| Implementations (data) | `lib/features/expense/data/repositories/` |
+#### Recurring Subscriptions (`lib/features/recurring/`)
+| File | Role |
+|------|------|
+| `data/models/recurring_subscription_model.dart` | `RecurringSubscriptionModel` |
+| `data/datasource/recurring_subscription_local_datasource.dart` | `recurring_subscriptions` Hive box datasource |
+| `data/repositories/hive_recurring_subscription_repository.dart` | implementation of subscriptions repository |
+| `domain/repositories/recurring_subscription_repository.dart` | repository interface |
+| `presentation/provider/recurring_subscription_providers.dart` | list and controller providers for subscriptions |
+| `presentation/widgets/subscription_editor_sheet.dart` | bottom-sheet for create/edit subscriptions |
+| `presentation/widgets/subscription_icons.dart` | icon lookup mapping for subscriptions |
+| `presentation/widgets/recurring_tool_view.dart` | recurring subscriptions manager view |
 
-### Providers / State (`lib/features/expense/presentation/provider/`)
-| File | Provides |
-|------|---------|
-| `expense_providers.dart` | `expenseListProvider`, `expenseControllerProvider`, `statsProvider`, `filteredExpensesProvider` |
-| `account_providers.dart` | `accountListProvider`, `accountControllerProvider` |
-| `budget_providers.dart` | `budgetTargetsProvider`, `budgetControllerProvider` |
-| `preferences_providers.dart` | `appPreferencesProvider`, `appThemeModeProvider`, `localeProvider`, `currencySymbolProvider`, `privacyModeEnabledProvider`, `isOnboardingCompletedProvider` |
-| `recurring_subscription_providers.dart` | `recurringSubscriptionListProvider`, `recurringSubscriptionControllerProvider` |
-| `backup_providers.dart` | `backupControllerProvider`, `autoBackupEnabledProvider`, `backupFrequencyProvider`, `backupDirectoryPathProvider` |
-| `notifications_provider.dart` | `notificationsProvider` – in-app notification state |
+#### Analytics (`lib/features/analytics/`)
+| File | Role |
+|------|------|
+| `presentation/screens/stats_screen.dart` | monthly analytics and spending trends screen |
+| `presentation/screens/stats/stats_widgets.dart` | charts, metric tiles, and category breakdown widgets |
+
+#### Expense Core (`lib/features/expense/`)
+| File | Role |
+|------|------|
+| `data/models/expense_model.dart` | `ExpenseModel`, `TransactionType`, `ExpenseStats` |
+| `data/datasource/expense_local_datasource.dart` | `expenses` Hive box datasource |
+| `data/repositories/hive_expense_repository.dart` | implementation of expense repository |
+| `domain/repositories/expense_repository.dart` | repository interface |
+| `presentation/provider/expense_providers.dart` | `expenseListProvider`, `expenseControllerProvider`, `statsProvider`, `filteredExpensesProvider` |
+| `presentation/provider/notifications_provider.dart` | `notificationsProvider` (in-app derived alert state) |
+| `presentation/screens/app_shell.dart` | root scaffold with IndexedStack + custom bottom nav |
+| `presentation/screens/home_screen.dart` | dashboard: quick balance cards, date strip, recent list |
+| `presentation/screens/records_history_screen.dart` | full history screen with filters, search, and export |
+| `presentation/screens/unified_scanner_screen.dart` | camera scanner for barcode/QR code and AI photos |
+| `presentation/screens/upi_scanner_screen.dart` | QR scanner that parses UPI deep links for quick pay |
+| `presentation/screens/receipt_scanner_screen.dart` | OCR barcode/receipt scanning view |
+| `presentation/screens/product_scanner_screen.dart` | AI product identifier camera view |
+| `presentation/screens/voice_entry_screen.dart` | speech-to-expense voice capture screen |
+| `presentation/screens/notifications_screen.dart` | list of alerts, budget warnings, and due notices |
+| `presentation/widgets/transaction_card.dart` | single transaction row with swipe-to-delete |
+| `presentation/widgets/amount_visibility.dart` | privacy-mode aware amount visibility |
+| `presentation/widgets/ui_feedback.dart` | dialogs and confirmation sheets |
+| `presentation/widgets/app_drawer.dart` | app drawer menu |
+| `presentation/widgets/quick_action_bar.dart` | horizontal quick actions row on home |
+| `presentation/widgets/power_pill_menu.dart` | expandable pill FAB actions |
 
 ### SMS Parser Feature (`lib/features/sms_parser/`)
 | File | Purpose |
@@ -488,6 +489,12 @@ All `push` / `pushReplacement` calls are centralised through **`AppRoutes`** in 
 | 2026-04-19 | Added `lib/core/utils/tag_parser.dart`, `lib/core/constants/app_constants.dart`, `custom_category_model.dart`, `category_editor_sheet.dart`, `notifications_provider.dart`, `tools_tab_widgets.dart`, `amount_expression.dart`, `records_search_logic.dart` | 8 new files |
 | 2026-04-20 | Created `TASKS.md` – full future-goals backlog organised into 7 sections (Brand, Architecture, Features, UI/UX, Testing, Performance, DevOps) | `TASKS.md` |
 | 2026-04-20 | Updated `memory.md` – reflected rebrand, all new files (sms_parser, services, screens, widgets), updated §1 layout, §2 classification, §8 change log | `memory.md` |
+| 2026-05-27 | Decoupled modular features (`accounts`, `settings`, `categories`, `recurring`, `analytics`) out of `expense/`, reorganized test suite to match, fixed Cyrillic 'T' in SMS parser engine, updated AGENTS/GEMINI docs, and verified codebase (69/69 tests passing) | Over 40 files modified/moved, `memory.md` |
+| 2026-05-27 | Redesigned HomeTopBar and HomeHeader to replicate the floating white card hero layout from the user's design reference image (2).png, integrated quick amount chips inside the card, added navigation tap gestures, and resolved all 14 static analysis/formatting warnings across the codebase | lib/features/expense/presentation/screens/home/home_header.dart, lib/features/expense/presentation/screens/home_screen.dart, lib/features/categories/presentation/provider/budget_state.dart, lib/features/categories/presentation/screens/categories_screen.dart, lib/features/expense/presentation/widgets/power_pill_menu.dart, lib/features/sms_parser/domain/sms_parser_engine.dart, memory.md |
+| 2026-05-28 | Redesigned manual transaction input screen UI layout and interaction rules to support mockup, adding unified card, left-aligned amount field with smaller size, Date/Time + Location row, and trigger symbol prefixes on choice chips | lib/features/expense/presentation/screens/add_expense_screen.dart, memory.md |
+| 2026-05-28 | Refactored manual entry screen visual layout: removed brackets from chips, added premium accent tinted/solid colored styling, changed chips to fully rounded capsule shape (`BorderRadius.circular(20)`), relocated calculator preview to top-left of the input block, scaled down calculator toggle, grouped attachments/mic under a compact chip-like background pill placed on the same row as the Date/Time picker, enabled text keyboard with unified inline command parsing inside a cursor-friendly empty amount field (with blinking caret colored by transaction type), and set up a periodic tips hint rotator on the notes box. | lib/features/expense/presentation/screens/add_expense_screen.dart, lib/features/expense/presentation/screens/add_expense/amount_expression.dart, memory.md |
+| 2026-05-28 | Refined manual entry screen visual layout: configured explicit blinking caret sizing and properties, kept amount field focused during calculator toggling to preserve active cursor state, styled Date/Time picker and type tabs to match the fully rounded capsule shape (`BorderRadius.circular(20)`), and made the attachment/mic pill more compact with smaller 14px icons and padded capsule background. | lib/features/expense/presentation/screens/add_expense_screen.dart, lib/features/expense/presentation/screens/add_expense/add_expense_widgets.dart, memory.md |
+| 2026-05-28 | Integrated voice entry sheet directly into entry screen mic button (passing returnResult flags and populating amount, type, category, note, date), enabled unified scanner OCR import via scanner callback, configured native FilePicker file attachments, and implemented inline SMS notification copy-pasting to auto-fill transaction fields directly inside the amount field onChanged listener. | lib/features/expense/presentation/screens/add_expense_screen.dart, lib/features/expense/presentation/screens/unified_scanner_screen.dart, lib/features/expense/presentation/screens/voice_entry_screen.dart, lib/routes/app_routes.dart, memory.md |
 
 ---
 

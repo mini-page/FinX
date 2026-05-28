@@ -1,6 +1,6 @@
-# Gemini CLI Project Configuration: XPensa
+# Gemini CLI Project Configuration: XPens
 
-You are acting as an expert Senior Flutter Developer and Architect working on the `XPensa` application, an expense tracker built specifically for Android (and cross-platform).
+You are acting as an expert Senior Flutter Developer and Architect working on the `XPens` application, a premium, modern expense tracker built specifically for Android.
 
 ## Project Tech Stack
 - **Framework:** Flutter (Dart >= 3.0.0)
@@ -11,35 +11,46 @@ You are acting as an expert Senior Flutter Developer and Architect working on th
 
 ## Core Architectural Guidelines
 
-### 1. Feature-First Architecture
-The app follows a feature-driven folder structure inside `lib/`.
-- `lib/core/`: Application-wide utilities, constants, themes, and base classes (e.g., `lib/core/theme/app_colors.dart`).
-- `lib/features/`: Contains isolated feature modules like `accounts`, `analytics`, `categories`, `expense`, `recurring`, `settings`, `transactions`.
-- `lib/shared/`: Shared reusable UI widgets and components across multiple features (e.g., `app_button.dart`).
-- Every new feature should be self-contained with its own `data`, `domain`, and `presentation` layers.
+### 1. Feature-First Modular Architecture
+The codebase is structured into self-contained feature directories inside `lib/features/`.
+- `lib/core/`: Application-wide utilities, constants, theme systems, and database bootstraps.
+- `lib/shared/`: Reusable cross-feature UI components (e.g. `lib/shared/widgets/app_button.dart`).
+- `lib/features/`: Contains fully decoupled features:
+  - `accounts/`: Bank and balance account management.
+  - `categories/`: Category definitions, editor sheets, and budget logic.
+  - `recurring/`: Subscriptions, due date calculations, and recurring tools.
+  - `settings/`: App preferences, pin security, biometrics, and database backup controls.
+  - `analytics/`: Monthly spending statistics and flow visualization.
+  - `expense/`: Core transaction logging models and transaction list presentation.
+  - `sms_parser/`: Automated transaction extraction from SMS notifications.
+  - `transactions/`: General transactions barrel (add-expense, search, history screens).
+
+Every feature directory must maintain its clean boundary. Consumers must import via the barrel files (e.g. `import 'package:xpens/features/accounts/accounts.dart'`).
 
 ### 2. State Management (Riverpod)
-- Always use Riverpod (`ConsumerWidget`, `ConsumerStatefulWidget`, `Notifier`, `AsyncNotifier`) for state management.
-- Avoid using `setState` or `StatefulWidget` unless handling strictly localized, ephemeral UI state (like an animation controller).
-- Keep business logic inside Providers and Notifiers, not in UI widgets.
+- Keep all business logic and screen state in Riverpod Notifiers/Providers.
+- Limit `setState` exclusively to ephemeral UI state (e.g. local tab indices, animation controllers).
 
 ### 3. Data Persistence (Hive)
-- Data is stored locally using Hive. Ensure models are properly generated with TypeAdapters.
-- When querying data, wrap Hive boxes in repository classes.
+- Wrap all Hive boxes in datasource classes inside `lib/features/<feature>/data/datasource/`.
+- Ensure models generated with `@HiveType` register adapters in `lib/core/utils/hive_bootstrap.dart`.
 
-### 4. UI & Styling
-- Adhere to the established custom theme in `lib/core/theme/`.
-- Use the defined design tokens (Colors, Typography, Spacing).
-- Ensure the app remains visually polished, following Material Design principles with a modern aesthetic, keeping Android specifics in mind.
+### 4. Code Quality & Formatting
+- Maintain formatting with `flutter format .`.
+- Run `flutter analyze` and resolve all lint issues.
+- Keep tests updated under `test/features/` to mirror the features layout.
 
-### 5. Best Practices & Code Quality
-- Write clean, DRY, and well-documented Dart code.
-- Always implement and update tests when modifying business logic or providers (`test/features/...`).
-- Run `flutter analyze` and address all linting warnings before finalizing any feature.
-- Run `flutter format .` to maintain code consistency.
-- Handle exceptions gracefully and provide user-friendly error messages.
+## Tooling & Command Directives
 
-## Execution Directives
-- **Validation First:** When asked to implement a feature, always test it locally or advise the user to run `flutter run` to verify.
-- **Dependency Checks:** If instructed to use a new package, run `flutter pub add <package>` first and verify compatibility.
-- **Context Search:** Utilize the `grep_search` and `glob` tools to find existing widgets or utility functions in `lib/shared` and `lib/core` before building anything from scratch to prevent duplication.
+### 1. Modern Command-Line Alternatives
+To search, find, and navigate the repository, prioritize using modern CLI utilities over classical counterparts:
+- **File Finding:** Use `fd` instead of `find`.
+- **Content Searching:** Use `ripgrep` (`rg`) instead of `grep`.
+- **Directory Listing:** Use `eza` or `exa` instead of `ls` / `dir` for visual structure.
+- **File Viewing:** Use `bat` instead of `cat` or `type` for syntax highlighting.
+- **Directory Navigation:** Use `zoxide` (`z`) for fast jumping.
+
+### 2. Execution Directives
+- **Verification First:** Before finalizing any architectural or code changes, verify using `flutter analyze` and `flutter test`. Ensure all tests pass.
+- **Impact Analysis:** Run `gitnexus_impact` or similar impact mapping when modifying critical symbols.
+- **Living Memory:** You **must** update `memory.md` at the end of each session. Append changes to the Change Log and update the Layout structure to reflect reality.

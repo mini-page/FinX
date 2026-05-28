@@ -5,11 +5,18 @@
 library;
 
 // Presentation – screens
-export '../expense/presentation/screens/categories_screen.dart';
-export '../expense/presentation/screens/categories/categories_widgets.dart';
+// Presentation – screens
+export 'presentation/screens/categories_screen.dart';
+export 'presentation/screens/categories/categories_widgets.dart';
+
+// Presentation – widgets
+export 'presentation/widgets/category_editor_sheet.dart';
+export 'presentation/widgets/budget_editor_sheet.dart';
+export 'presentation/widgets/expense_category.dart';
 
 // Presentation – providers
-export '../expense/presentation/provider/budget_providers.dart';
+export 'presentation/provider/budget_providers.dart';
 
-// Data models (shared; re-exported for convenience)
-export '../expense/data/models/budget_model.dart';
+// Data models
+export 'data/models/budget_model.dart';
+export 'data/models/custom_category_model.dart';

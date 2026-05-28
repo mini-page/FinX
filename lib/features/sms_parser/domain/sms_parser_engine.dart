@@ -26,8 +26,8 @@ abstract final class SmsParserEngine {
   /// transactional senders (e.g. HDFCBANKТ, PAYTMT, SBIINT).
   static bool isTransactionalSender(String senderAddress) {
     final upper = senderAddress.trim().toUpperCase();
-    // Alphanumeric sender IDs ending in T
-    if (RegExp(r'^[A-Z0-9\-]{3,}T$').hasMatch(upper)) return true;
+    // Alphanumeric sender IDs ending in T (Latin T or Cyrillic Т)
+    if (RegExp(r'^[A-Z0-9\-]{3,}[TТ]$').hasMatch(upper)) return true;
     // Common patterns: -ALERTS, NOTIFY
     if (upper.contains('ALERT') ||
         upper.contains('NOTIFY') ||
@@ -285,17 +285,23 @@ abstract final class SmsParserEngine {
     if (_containsAny(lower, const <String>[
       'swiggy', 'zomato', 'dunzo', 'blinkit', 'restaurant', 'cafe',
       'food', 'dine', 'hotel', 'domino', 'pizza', 'biryani',
-    ])) return 'Food & Dining';
+    ])) {
+      return 'Food & Dining';
+    }
 
     if (_containsAny(lower, const <String>[
       'ola', 'uber', 'rapido', 'redbus', 'irctc', 'petrol', 'fuel',
       'diesel', 'metro', 'auto', 'cab', 'bus ticket', 'train',
-    ])) return 'Transport';
+    ])) {
+      return 'Transport';
+    }
 
     if (_containsAny(lower, const <String>[
       'amazon', 'flipkart', 'myntra', 'ajio', 'meesho', 'nykaa',
       'shopping', 'mall', 'retail',
-    ])) return 'Shopping';
+    ])) {
+      return 'Shopping';
+    }
 
     // Combine message body + sender once to check both with a single pass.
     final combined = lower + senderLower;
@@ -305,26 +311,36 @@ abstract final class SmsParserEngine {
       'vi ', // trailing space avoids false-positive on words containing 'vi'
       'bsnl', 'recharge', 'dth',
       'tata sky', 'dish tv', 'bill pay', 'bill payment',
-    ])) return 'Bills & Utilities';
+    ])) {
+      return 'Bills & Utilities';
+    }
 
     if (_containsAny(lower, const <String>[
       'pharmacy', 'medical', 'hospital', 'clinic', 'doctor', 'apollo',
       'medplus', 'netmeds', 'pharmeasy', 'health', 'medicine',
-    ])) return 'Healthcare';
+    ])) {
+      return 'Healthcare';
+    }
 
     if (_containsAny(lower, const <String>[
       'netflix', 'hotstar', 'prime video', 'amazon prime', 'spotify',
       'youtube', 'game', 'movie', 'theatre', 'multiplex', 'pvr', 'inox',
-    ])) return 'Entertainment';
+    ])) {
+      return 'Entertainment';
+    }
 
     if (_containsAny(lower, const <String>[
       'school', 'college', 'university', 'tuition', 'coaching',
       'education', 'course', 'udemy', 'coursera',
-    ])) return 'Education';
+    ])) {
+      return 'Education';
+    }
 
     if (_containsAny(lower, const <String>[
       'salary', 'payroll', 'stipend', 'wages',
-    ])) return 'Salary';
+    ])) {
+      return 'Salary';
+    }
 
     return null;
   }

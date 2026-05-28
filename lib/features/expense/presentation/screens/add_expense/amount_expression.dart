@@ -23,7 +23,29 @@ class AmountExpressionResult {
 }
 
 AmountExpressionResult evaluateAmountExpression(String expression) {
-  final source = expression.trim();
+  // Extract only the math expression part from the unified query
+  final tokens = expression.trim().split(RegExp(r'\s+'));
+  final mathTokens = <String>[];
+  for (int i = 0; i < tokens.length; i++) {
+    final token = tokens[i];
+    if (token.isEmpty) continue;
+    if (token.startsWith('@') ||
+        token.startsWith('/') ||
+        token.startsWith('#') ||
+        (token.startsWith('+') && !RegExp(r'^\d').hasMatch(token.substring(1))) ||
+        token.startsWith('!')) {
+      continue;
+    }
+    // If it is a math token or at the start
+    final isMath = RegExp(r'^[\d\.\+\-\*\/x]+$').hasMatch(token);
+    if (i == 0 || isMath) {
+      mathTokens.add(token);
+    } else {
+      break;
+    }
+  }
+  final source = mathTokens.join('');
+
   if (source.isEmpty) {
     return const AmountExpressionResult(
       amount: 0,
@@ -54,8 +76,15 @@ AmountExpressionResult evaluateAmountExpression(String expression) {
       runningTotal = parsed;
     } else if (pendingOperator == '+') {
       runningTotal += parsed;
-    } else {
+    } else if (pendingOperator == '-') {
       runningTotal -= parsed;
+    } else if (pendingOperator == '*' || pendingOperator == 'x') {
+      runningTotal *= parsed;
+    } else if (pendingOperator == '/') {
+      if (parsed == 0) {
+        return false;
+      }
+      runningTotal /= parsed;
     }
     currentNumber = '';
     return true;
@@ -87,7 +116,7 @@ AmountExpressionResult evaluateAmountExpression(String expression) {
       continue;
     }
 
-    if (char == '+' || char == '-') {
+    if (char == '+' || char == '-' || char == '*' || char == '/' || char == 'x') {
       if (!commitCurrentNumber()) {
         return AmountExpressionResult(
           amount: 0,
@@ -112,7 +141,7 @@ AmountExpressionResult evaluateAmountExpression(String expression) {
       hasOperator: hasOperator,
       isComplete: false,
       displayExpression: _formatExpressionForDisplay(source),
-      errorText: 'Only numbers, ".", "+", and "-" are allowed.',
+      errorText: 'Only numbers, ".", "+", "-", "*", and "/" are allowed.',
     );
   }
 
@@ -180,6 +209,9 @@ String _formatExpressionForDisplay(String expression) {
   return expression
       .replaceAll('+', ' + ')
       .replaceAll('-', ' - ')
+      .replaceAll('*', ' * ')
+      .replaceAll('/', ' / ')
+      .replaceAll('x', ' x ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 }

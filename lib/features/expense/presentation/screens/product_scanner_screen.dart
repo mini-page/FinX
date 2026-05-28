@@ -9,7 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../../core/services/ai_product_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../routes/app_routes.dart';
-import '../provider/preferences_providers.dart';
+import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
 
 /// AI-powered product scanner.
 ///

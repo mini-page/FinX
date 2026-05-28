@@ -3,12 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../routes/app_routes.dart';
-import '../../data/models/account_model.dart';
+import 'package:xpens/features/accounts/data/models/account_model.dart';
 import '../../data/models/expense_model.dart';
-import '../provider/account_providers.dart';
+import 'package:xpens/features/accounts/presentation/provider/account_providers.dart';
 import '../provider/expense_providers.dart';
 import '../provider/notifications_provider.dart';
-import '../provider/preferences_providers.dart';
+import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/ui_feedback.dart';
 import 'home/home_date_strip.dart';
@@ -92,7 +92,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // ── Everything below scrolls ──────────────────────────────────────
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 160),
+            padding: const EdgeInsets.only(bottom: 100),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
@@ -107,59 +107,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         .read(appPreferencesControllerProvider)
                         .setPrivacyMode(!privacyModeEnabled);
                   },
+                  quickAmounts: quickAmounts,
+                  onAmountTap: (amount) => _openAddExpenseScreen(
+                    context,
+                    initialAmount: amount,
+                    initialDate: _selectedDate,
+                  ),
+                  onAmountLongPress: (amount) => _showChipOptions(
+                    context,
+                    amount: amount,
+                    isLocaleDefault: localeAmounts.contains(amount) &&
+                        !customAmounts.contains(amount),
+                    customAmounts: customAmounts,
+                    hiddenDefaults: hiddenDefaults,
+                    quickAmounts: quickAmounts,
+                  ),
+                  onAddAmountTap: () => _showAddCustomAmountDialog(
+                    context,
+                    customAmounts: customAmounts,
+                    quickAmounts: quickAmounts,
+                  ),
                 ),
 
                 // ── Scrollable content ────────────────────────────────────
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 44,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: <Widget>[
-                            ...quickAmounts.map((amount) {
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: HomeAmountChip(
-                                  label: currencyFormat.format(amount),
-                                  onTap: () => _openAddExpenseScreen(
-                                    context,
-                                    initialAmount: amount,
-                                    initialDate: _selectedDate,
-                                  ),
-                                  onLongPress: () => _showChipOptions(
-                                    context,
-                                    amount: amount,
-                                    // A value that was re-added as custom after
-                                    // hiding its locale default lives in customAmounts
-                                    // even though localeAmounts also contains it.
-                                    // Treat it as custom so the right storage path
-                                    // (setCustomQuickAmounts) is used on delete/edit.
-                                    isLocaleDefault:
-                                        localeAmounts.contains(amount) &&
-                                            !customAmounts.contains(amount),
-                                    customAmounts: customAmounts,
-                                    hiddenDefaults: hiddenDefaults,
-                                    quickAmounts: quickAmounts,
-                                  ),
-                                ),
-                              );
-                            }),
-                            HomeAddAmountChip(
-                              onTap: () => _showAddCustomAmountDialog(
-                                context,
-                                customAmounts: customAmounts,
-                                quickAmounts: quickAmounts,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 30),
                       HomeDateStrip(
                         visibleDates: visibleDates,
                         selectedDate: _selectedDate,

@@ -4,8 +4,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:workmanager/workmanager.dart';
-import '../../features/expense/data/datasource/preferences_local_datasource.dart';
-import '../../features/expense/data/models/app_preferences_model.dart';
+import 'package:xpens/features/settings/data/datasource/preferences_local_datasource.dart';
+import 'package:xpens/features/settings/data/models/app_preferences_model.dart';
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {

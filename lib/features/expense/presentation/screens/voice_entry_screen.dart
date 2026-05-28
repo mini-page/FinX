@@ -14,12 +14,12 @@ import '../../data/models/expense_model.dart';
 ///
 /// Callers should `await` this; when the sheet closes after a successful
 /// voice command the user is already navigating to [AddExpenseScreen].
-Future<void> showVoiceEntrySheet(BuildContext context) {
-  return showModalBottomSheet<void>(
+Future<ParsedCommand?> showVoiceEntrySheet(BuildContext context, {bool returnResult = false}) {
+  return showModalBottomSheet<ParsedCommand?>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => const VoiceEntryScreen(),
+    builder: (_) => VoiceEntryScreen(returnResult: returnResult),
   );
 }
 
@@ -28,10 +28,12 @@ Future<void> showVoiceEntrySheet(BuildContext context) {
 /// A bottom-sheet that:
 /// 1. Lets the user tap 🎤 to start Android speech recognition.
 /// 2. Displays the recognised text.
-/// 3. Parses it into a [_ParsedCommand] (amount / type / category).
+/// 3. Parses it into a [ParsedCommand] (amount / type / category).
 /// 4. Navigates to [AddExpenseScreen] with pre-filled data on confirm.
 class VoiceEntryScreen extends StatefulWidget {
-  const VoiceEntryScreen({super.key});
+  const VoiceEntryScreen({super.key, this.returnResult = false});
+
+  final bool returnResult;
 
   @override
   State<VoiceEntryScreen> createState() => _VoiceEntryScreenState();
@@ -40,7 +42,7 @@ class VoiceEntryScreen extends StatefulWidget {
 class _VoiceEntryScreenState extends State<VoiceEntryScreen> {
   _VoiceState _state = _VoiceState.idle;
   String? _recognisedText;
-  _ParsedCommand? _parsed;
+  ParsedCommand? _parsed;
 
   @override
   Widget build(BuildContext context) {
@@ -284,6 +286,11 @@ class _VoiceEntryScreenState extends State<VoiceEntryScreen> {
     final cmd = _parsed;
     if (cmd == null || !mounted) return;
 
+    if (widget.returnResult) {
+      Navigator.of(context).pop(cmd);
+      return;
+    }
+
     Navigator.of(context).pop();
 
     AppRoutes.pushAddExpense(
@@ -337,7 +344,7 @@ class _MicButton extends StatelessWidget {
 class _ParsedPreview extends StatelessWidget {
   const _ParsedPreview({required this.command});
 
-  final _ParsedCommand command;
+  final ParsedCommand command;
 
   @override
   Widget build(BuildContext context) {
@@ -442,8 +449,8 @@ enum _VoiceState { idle, listening, result }
 
 // ── Voice command parser ───────────────────────────────────────────────────
 
-class _ParsedCommand {
-  const _ParsedCommand({
+class ParsedCommand {
+  const ParsedCommand({
     required this.amount,
     required this.type,
     required this.category,
@@ -488,7 +495,7 @@ abstract final class _VoiceCommandParser {
 
   // ── Public API ─────────────────────────────────────────────────────
 
-  static Future<_ParsedCommand?> parse(String rawText) async {
+  static Future<ParsedCommand?> parse(String rawText) async {
     final dict = await _loadDict();
     final text = rawText.toLowerCase().trim();
 
@@ -513,7 +520,7 @@ abstract final class _VoiceCommandParser {
     // ── 5. Detect date hint ──────────────────────────────────────────
     final date = _detectDate(text, dict);
 
-    return _ParsedCommand(
+    return ParsedCommand(
       amount: amount,
       type: type,
       category: category,

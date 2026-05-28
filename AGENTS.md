@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **XPensa** (222 symbols, 214 relationships, 0 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **XPens** (rebranded from XPensa). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -12,12 +12,22 @@ This project is indexed by GitNexus as **XPensa** (222 symbols, 214 relationship
 - **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
 - When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
 - When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+- **MUST update `memory.md` Change Log and repository layout** after making any changes. No stale code structures or logs are allowed.
+
+## Modern Tooling Directives
+
+When inspecting files or executing commands on the host shell, prioritize modern developer utilities:
+- Use `fd` instead of classical `find`
+- Use `ripgrep` (`rg`) instead of classical `grep`
+- Use `eza` / `exa` instead of `ls` / `dir`
+- Use `bat` instead of `cat`
+- Use `zoxide` for quick path traversal
 
 ## When Debugging
 
 1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows related to the issue
 2. `gitnexus_context({name: "<suspect function>"})` — see all callers, callees, and process participation
-3. `READ gitnexus://repo/XPensa/process/{processName}` — trace the full execution flow step by step
+3. `READ gitnexus://repo/XPens/process/{processName}` — trace the full execution flow step by step
 4. For regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})` — see what your branch changed
 
 ## When Refactoring
@@ -56,10 +66,10 @@ This project is indexed by GitNexus as **XPensa** (222 symbols, 214 relationship
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/XPensa/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/XPensa/clusters` | All functional areas |
-| `gitnexus://repo/XPensa/processes` | All execution flows |
-| `gitnexus://repo/XPensa/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/XPens/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/XPens/clusters` | All functional areas |
+| `gitnexus://repo/XPens/processes` | All execution flows |
+| `gitnexus://repo/XPens/process/{name}` | Step-by-step execution trace |
 
 ## Self-Check Before Finishing
 
@@ -84,8 +94,6 @@ npx gitnexus analyze --embeddings
 ```
 
 To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.embeddings` field shows the count (0 means no embeddings). **Running analyze without `--embeddings` will delete any previously generated embeddings.**
-
-> Claude Code users: A PostToolUse hook handles this automatically after `git commit` and `git merge`.
 
 ## CLI
 

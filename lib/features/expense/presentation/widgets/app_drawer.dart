@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../routes/app_routes.dart';
-import '../provider/preferences_providers.dart';
+import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
 
 class AppDrawer extends ConsumerWidget {
   const AppDrawer({super.key});

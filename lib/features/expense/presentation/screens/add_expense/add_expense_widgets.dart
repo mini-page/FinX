@@ -65,10 +65,10 @@ class AddExpenseModeTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: isSelected ? Colors.white : Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
           child: Center(
@@ -92,7 +92,7 @@ class AddExpenseModeTab extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: activeColor,
-                          fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
                           fontSize: 13,
                         ),
                       )

@@ -1,16 +1,16 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
-import '../../features/expense/data/datasource/account_local_datasource.dart';
-import '../../features/expense/data/datasource/budget_local_datasource.dart';
-import '../../features/expense/data/datasource/expense_local_datasource.dart';
-import '../../features/expense/data/datasource/month_budget_local_datasource.dart';
-import '../../features/expense/data/datasource/preferences_local_datasource.dart';
-import '../../features/expense/data/datasource/recurring_subscription_local_datasource.dart';
-import '../../features/expense/data/models/account_model.dart';
-import '../../features/expense/data/models/app_preferences_model.dart';
-import '../../features/expense/data/models/budget_model.dart';
-import '../../features/expense/data/models/expense_model.dart';
-import '../../features/expense/data/models/recurring_subscription_model.dart';
+import 'package:xpens/features/accounts/data/datasource/account_local_datasource.dart';
+import 'package:xpens/features/categories/data/datasource/budget_local_datasource.dart';
+import 'package:xpens/features/expense/data/datasource/expense_local_datasource.dart';
+import 'package:xpens/features/categories/data/datasource/month_budget_local_datasource.dart';
+import 'package:xpens/features/settings/data/datasource/preferences_local_datasource.dart';
+import 'package:xpens/features/recurring/data/datasource/recurring_subscription_local_datasource.dart';
+import 'package:xpens/features/accounts/data/models/account_model.dart';
+import 'package:xpens/features/settings/data/models/app_preferences_model.dart';
+import 'package:xpens/features/categories/data/models/budget_model.dart';
+import 'package:xpens/features/expense/data/models/expense_model.dart';
+import 'package:xpens/features/recurring/data/models/recurring_subscription_model.dart';
 
 abstract final class HiveBootstrap {
   static Future<void> initialize() async {

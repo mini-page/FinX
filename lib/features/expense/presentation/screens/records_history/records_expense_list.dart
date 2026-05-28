@@ -3,7 +3,7 @@ import 'dart:collection';
 import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/app_colors.dart';
-import '../../../data/models/account_model.dart';
+import 'package:xpens/features/accounts/data/models/account_model.dart';
 import '../../../data/models/expense_model.dart';
 import '../../widgets/transaction_card.dart';
 

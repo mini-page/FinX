@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../../core/theme/app_colors.dart';
-import '../../../../../core/theme/app_tokens.dart';
 
-/// Card showing the 7-day date picker strip with navigation arrows and a
-/// selected-day summary row.
-class HomeDateStrip extends StatelessWidget {
+class HomeDateStrip extends StatefulWidget {
   const HomeDateStrip({
     super.key,
     required this.visibleDates,
@@ -31,12 +28,93 @@ class HomeDateStrip extends StatelessWidget {
   final VoidCallback onJumpToToday;
 
   @override
+  State<HomeDateStrip> createState() => _HomeDateStripState();
+}
+
+class _HomeDateStripState extends State<HomeDateStrip> {
+  late ScrollController _scrollController;
+  late List<DateTime> _scrollableDates;
+  bool _initialScrollDone = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    _scrollableDates = _buildScrollableDates();
+  }
+
+  @override
+  void didUpdateWidget(HomeDateStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isSameDateList(oldWidget.visibleDates, widget.visibleDates)) {
+      _scrollableDates = _buildScrollableDates();
+      _initialScrollDone = false;
+    }
+    if (oldWidget.selectedDate != widget.selectedDate && _initialScrollDone) {
+      _scrollToSelected();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialScrollDone) {
+      _initialScrollDone = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToSelected();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  bool _isSameDateList(List<DateTime> a, List<DateTime> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (!DateUtils.isSameDay(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  List<DateTime> _buildScrollableDates() {
+    final start = widget.visibleDates.first;
+    final end = widget.visibleDates.last;
+    final expandedStart = start.subtract(const Duration(days: 7));
+    final expandedEnd = end.add(const Duration(days: 7));
+    final days = expandedEnd.difference(expandedStart).inDays;
+    return List<DateTime>.generate(
+      days + 1,
+      (i) => expandedStart.add(Duration(days: i)),
+    );
+  }
+
+  void _scrollToSelected() {
+    if (!_scrollController.hasClients) return;
+    final index = _scrollableDates.indexWhere(
+      (d) => DateUtils.isSameDay(d, widget.selectedDate),
+    );
+    if (index == -1) return;
+    final itemWidth = 50.0;
+    final viewportWidth = _scrollController.position.viewportDimension;
+    final targetOffset = (index * itemWidth) - (viewportWidth / 2) + (itemWidth / 2);
+    _scrollController.animateTo(
+      targetOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final monthFormat = DateFormat('MMM yyyy');
     final weekdayFormat = DateFormat('E');
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
@@ -52,115 +130,128 @@ class HomeDateStrip extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Expanded(
-                child: Text(
-                  monthFormat.format(selectedDate),
-                  style: const TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
+              Text(
+                monthFormat.format(widget.selectedDate),
+                style: const TextStyle(
+                  color: AppColors.textDark,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              // H3: Jump-to-today button when not on today's window
-              if (!isOnToday)
-                Tooltip(
-                  message: 'Jump to today',
-                  child: TextButton.icon(
-                    onPressed: onJumpToToday,
-                    icon: const Icon(
-                      Icons.today_rounded,
-                      size: 16,
-                      color: AppColors.primaryBlue,
+              const Spacer(),
+              if (!widget.isOnToday)
+                GestureDetector(
+                  onTap: widget.onJumpToToday,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    label: const Text(
+                    child: const Text(
                       'Today',
                       style: TextStyle(
                         color: AppColors.primaryBlue,
                         fontWeight: FontWeight.w800,
-                        fontSize: 13,
+                        fontSize: 12,
                       ),
-                    ),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                 ),
-              HomeDateNavButton(
+              const SizedBox(width: 4),
+              _NavArrow(
                 icon: Icons.arrow_back_rounded,
-                tooltip: 'Previous week',
-                onTap: onPrevious,
+                onTap: widget.onPrevious,
               ),
-              const SizedBox(width: 8),
-              HomeDateNavButton(
+              const SizedBox(width: 4),
+              _NavArrow(
                 icon: Icons.arrow_forward_rounded,
-                tooltip: 'Next week',
-                onTap: onNext,
+                onTap: widget.onNext,
               ),
             ],
           ),
-          const SizedBox(height: 18),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: visibleDates.map((date) {
-              final isSelected = DateUtils.isSameDay(date, selectedDate);
-              return Expanded(
-                child: HomeDayPill(
-                  label:
-                      weekdayFormat.format(date).substring(0, 1).toUpperCase(),
-                  day: date.day.toString().padLeft(2, '0'),
-                  isSelected: isSelected,
-                  onTap: () => onDateSelected(date),
-                ),
-              );
-            }).toList(growable: false),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 52,
+            child: ListView.builder(
+              controller: _scrollController,
+              scrollDirection: Axis.horizontal,
+              itemCount: _scrollableDates.length,
+              itemBuilder: (context, index) {
+                final date = _scrollableDates[index];
+                final isSelected = DateUtils.isSameDay(date, widget.selectedDate);
+                final isToday = DateUtils.isSameDay(date, DateTime.now());
+                return GestureDetector(
+                  onTap: () => widget.onDateSelected(date),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 46,
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isSelected
+                          ? AppColors.accentLime
+                          : Colors.transparent,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          weekdayFormat.format(date).substring(0, 1).toUpperCase(),
+                          style: TextStyle(
+                            color: isSelected
+                                ? AppColors.accentLimeDark
+                                : AppColors.textMuted,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          date.day.toString(),
+                          style: TextStyle(
+                            color: isSelected
+                                ? AppColors.accentLimeDark
+                                : isToday
+                                    ? AppColors.primaryBlue
+                                    : AppColors.textDark,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceMuted,
-              borderRadius: BorderRadius.circular(AppRadii.lg),
-            ),
-            child: Row(
-              children: <Widget>[
-                const Expanded(
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text(
+                '${widget.transactionCount} txn${widget.transactionCount == 1 ? '' : 's'}',
+                style: const TextStyle(
+                  color: AppColors.textTertiary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
                   child: Text(
-                    'Selected day',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w700,
+                    widget.selectedTotalText,
+                    style: const TextStyle(
+                      color: AppColors.textDark,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
-                Text(
-                  '$transactionCount txns',
-                  style: const TextStyle(
-                    color: AppColors.textTertiary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Flexible(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      selectedTotalText,
-                      style: const TextStyle(
-                        color: AppColors.textDark,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -168,92 +259,24 @@ class HomeDateStrip extends StatelessWidget {
   }
 }
 
-/// Small circular icon button used for previous / next navigation in
-/// [HomeDateStrip].
-class HomeDateNavButton extends StatelessWidget {
-  const HomeDateNavButton({
-    super.key,
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-  });
+class _NavArrow extends StatelessWidget {
+  const _NavArrow({required this.icon, required this.onTap});
 
   final IconData icon;
-  final String tooltip;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: tooltip,
-      child: Tooltip(
-        message: tooltip,
-        child: Material(
-          color: AppColors.surfaceMuted,
-          shape: const CircleBorder(),
-          child: InkWell(
-            onTap: onTap,
-            customBorder: const CircleBorder(),
-            child: SizedBox(
-              width: kMinInteractiveDimension,
-              height: kMinInteractiveDimension,
-              child: Icon(icon, size: 18, color: AppColors.textMuted),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A single day pill inside [HomeDateStrip].
-class HomeDayPill extends StatelessWidget {
-  const HomeDayPill({
-    super.key,
-    required this.label,
-    required this.day,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final String label;
-  final String day;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.accentLime : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppRadii.lg),
-        ),
-        child: Column(
-          children: <Widget>[
-            Text(
-              label,
-              style: TextStyle(
-                color:
-                    isSelected ? AppColors.accentLimeDark : AppColors.textMuted,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              day,
-              style: TextStyle(
-                color:
-                    isSelected ? AppColors.accentLimeDark : AppColors.textDark,
-                fontWeight: FontWeight.w900,
-                fontSize: 18,
-              ),
-            ),
-          ],
+    return Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(icon, size: 18, color: AppColors.textMuted),
         ),
       ),
     );

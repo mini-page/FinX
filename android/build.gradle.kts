@@ -24,6 +24,13 @@ subprojects {
     val newSubprojectBuildDir = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
     project.evaluationDependsOn(":app")
+
+    configurations.all {
+        resolutionStrategy {
+            force("androidx.glance:glance:1.1.0")
+            force("androidx.glance:glance-appwidget:1.1.0")
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {

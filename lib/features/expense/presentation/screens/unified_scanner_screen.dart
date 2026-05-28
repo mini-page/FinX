@@ -10,7 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../../core/services/ai_product_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../routes/app_routes.dart';
-import '../provider/preferences_providers.dart';
+import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
 
 /// A unified scan-and-log screen combining two modes in a single camera view.
 ///
@@ -26,10 +26,15 @@ import '../provider/preferences_providers.dart';
 /// A segmented tab switcher at the bottom lets the user toggle between modes
 /// without leaving the screen — no extra taps or bottom sheets needed.
 class UnifiedScannerScreen extends ConsumerStatefulWidget {
-  const UnifiedScannerScreen({super.key, this.initialTab = 0});
+  const UnifiedScannerScreen({
+    super.key,
+    this.initialTab = 0,
+    this.returnResult = false,
+  });
 
   /// 0 = Bill Scan, 1 = AI Scan.
   final int initialTab;
+  final bool returnResult;
 
   @override
   ConsumerState<UnifiedScannerScreen> createState() =>
@@ -147,6 +152,13 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
     }
 
     if (!mounted) return;
+    if (widget.returnResult) {
+      Navigator.of(context).pop({
+        'amount': amount,
+        'note': note,
+      });
+      return;
+    }
     AppRoutes.replaceWithAddExpense(context,
         initialAmount: amount, initialNote: note);
   }
@@ -283,6 +295,14 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
         barcodeHint: barcodeHint,
       );
       if (!mounted) return;
+      if (widget.returnResult) {
+        Navigator.of(context).pop({
+          'amount': result.price,
+          'category': result.category,
+          'note': result.name,
+        });
+        return;
+      }
       AppRoutes.replaceWithAddExpense(
         context,
         initialNote: result.name,
@@ -412,7 +432,11 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                   child: FilledButton(
                     onPressed: () {
                       Navigator.of(ctx).pop();
-                      AppRoutes.replaceWithAddExpense(context);
+                      if (widget.returnResult) {
+                        Navigator.of(context).pop();
+                      } else {
+                        AppRoutes.replaceWithAddExpense(context);
+                      }
                     },
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primaryBlue,

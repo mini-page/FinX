@@ -7,7 +7,7 @@ import '../features/expense/presentation/screens/records_history_screen.dart';
 import '../features/expense/presentation/screens/product_scanner_screen.dart';
 import '../features/expense/presentation/screens/receipt_scanner_screen.dart';
 import '../features/expense/presentation/screens/unified_scanner_screen.dart';
-import '../features/expense/presentation/screens/settings_screen.dart';
+import 'package:xpens/features/settings/presentation/screens/settings_screen.dart';
 import '../features/expense/presentation/screens/upi_scanner_screen.dart';
 
 /// Centralised navigation helpers for XPens.
@@ -149,13 +149,17 @@ abstract final class AppRoutes {
   /// Push the unified scanner screen (Bill Scan + AI Scan tabs).
   ///
   /// This is the primary entry point for the Scan & Log pill.
-  static Future<void> pushUnifiedScanner(
+  static Future<Map<String, dynamic>?> pushUnifiedScanner(
     BuildContext context, {
     int initialTab = 0,
+    bool returnResult = false,
   }) {
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => UnifiedScannerScreen(initialTab: initialTab),
+    return Navigator.of(context).push<Map<String, dynamic>?>(
+      MaterialPageRoute<Map<String, dynamic>?>(
+        builder: (_) => UnifiedScannerScreen(
+          initialTab: initialTab,
+          returnResult: returnResult,
+        ),
       ),
     );
   }

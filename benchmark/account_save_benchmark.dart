@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:xpens/features/expense/data/datasource/account_local_datasource.dart';
-import 'package:xpens/features/expense/data/models/account_model.dart';
+import 'package:xpens/features/accounts/data/datasource/account_local_datasource.dart';
+import 'package:xpens/features/accounts/data/models/account_model.dart';
 import 'package:hive/hive.dart';
 
 // ignore_for_file: avoid_print

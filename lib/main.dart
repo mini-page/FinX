@@ -7,10 +7,10 @@ import 'core/constants/app_constants.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/background_backup.dart';
 import 'core/utils/hive_bootstrap.dart';
-import 'features/expense/presentation/provider/preferences_providers.dart';
+import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
 import 'features/expense/presentation/screens/app_shell.dart';
-import 'features/expense/presentation/screens/onboarding_screen.dart';
-import 'features/expense/presentation/screens/pin_entry_screen.dart';
+import 'package:xpens/features/settings/presentation/screens/onboarding_screen.dart';
+import 'package:xpens/features/settings/presentation/screens/pin_entry_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -65,8 +65,7 @@ class XPensApp extends ConsumerWidget {
           }
           return const AppShell();
         },
-        loading: () =>
-            const Scaffold(body: Center(child: CircularProgressIndicator())),
+        loading: () => const SizedBox.shrink(),
         error: (_, __) => const AppShell(),
       ),
     );

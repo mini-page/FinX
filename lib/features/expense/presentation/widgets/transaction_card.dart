@@ -4,10 +4,10 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/tag_parser.dart';
-import '../provider/preferences_providers.dart';
+import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
 import '../../data/models/expense_model.dart';
 import 'amount_visibility.dart';
-import 'expense_category.dart';
+import 'package:xpens/features/categories/presentation/widgets/expense_category.dart';
 
 class TransactionCard extends ConsumerStatefulWidget {
   const TransactionCard({

@@ -11,15 +11,14 @@ import '../../../../routes/app_routes.dart';
 import '../../../../shared/widgets/floating_nav_bar.dart';
 import '../../data/models/expense_model.dart';
 import '../provider/expense_providers.dart';
-import '../provider/preferences_providers.dart';
+import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
 import '../widgets/power_pill_menu.dart';
-import 'accounts_screen.dart';
-import 'categories_screen.dart';
+import 'package:xpens/features/accounts/accounts.dart';
+import 'package:xpens/features/categories/presentation/screens/categories_screen.dart';
 import 'home_screen.dart';
-import 'stats_screen.dart';
+import 'package:xpens/features/analytics/presentation/screens/stats_screen.dart';
 import 'voice_entry_screen.dart';
 import '../../../sms_parser/presentation/screens/sms_settings_sheet.dart';
-import '../../../sms_parser/presentation/provider/sms_providers.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -29,10 +28,23 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  final GlobalKey<PowerFabState> _fabKey = GlobalKey<PowerFabState>();
   int _selectedIndex = 0;
-  bool _fabOpen = false;
+  bool _navBarVisible = true;
+  double _lastScrollOffset = 0;
   StreamSubscription<Uri?>? _widgetClickedSub;
+
+  void _onScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollUpdateNotification) {
+      final metrics = notification.metrics;
+      final delta = metrics.pixels - _lastScrollOffset;
+      _lastScrollOffset = metrics.pixels;
+      if (delta > 3 && _navBarVisible) {
+        setState(() => _navBarVisible = false);
+      } else if (delta < -3 && !_navBarVisible) {
+        setState(() => _navBarVisible = true);
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -222,12 +234,20 @@ class _AppShellState extends ConsumerState<AppShell> {
       extendBody: true,
       body: Stack(
         children: [
-          IndexedStack(index: _selectedIndex, children: pages),
+          NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              _onScrollNotification(notification);
+              return false;
+            },
+            child: IndexedStack(index: _selectedIndex, children: pages),
+          ),
           // Bottom Gradient Overlay for Navbar Contrast
-          Positioned(
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
             left: 0,
             right: 0,
-            bottom: 0,
+            bottom: _navBarVisible ? 0 : -100,
             height: 120,
             child: IgnorePointer(
               child: Container(
@@ -245,52 +265,31 @@ class _AppShellState extends ConsumerState<AppShell> {
               ),
             ),
           ),
-          // Dismiss barrier — covers content when FAB menu is open
-          if (_fabOpen)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _fabKey.currentState?.close(),
-                child: Container(color: Colors.black.withValues(alpha: 0.12)),
-              ),
-            ),
-          // Expandable power FAB
+          // Power FAB — direct add expense
           Positioned(
             right: 16,
-            bottom: 120,
+            bottom: 96,
             child: PowerFab(
-              key: _fabKey,
               onQuickAdd: _openAddExpenseScreen,
-              onScanner: () {
-                if (mounted) AppRoutes.pushUnifiedScanner(context);
-              },
-              onPayDirectly: () {
-                if (mounted) AppRoutes.pushUpiScanner(context);
-              },
-              onVoice: () {
-                if (mounted) _showVoiceEntry();
-              },
-              onSms: () {
-                if (mounted) showSmsSettingsSheet(context);
-              },
-              onToggle: (open) => setState(() => _fabOpen = open),
-              smsParsingEnabled: ref.watch(smsParsingEnabledProvider),
-              onSmsToggle: (enabled) {
-                ref
-                    .read(appPreferencesControllerProvider)
-                    .setSmsParsingEnabled(enabled);
+            ),
+          ),
+          // NavBar — auto-hides on scroll down
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            left: 0,
+            right: 0,
+            bottom: _navBarVisible ? 0 : -100,
+            child: FloatingNavBar(
+              selectedIndex: _selectedIndex,
+              onTap: (index) {
+                setState(() {
+                  _selectedIndex = index;
+                });
               },
             ),
           ),
         ],
-      ),
-      bottomNavigationBar: FloatingNavBar(
-        selectedIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
       ),
     );
   }

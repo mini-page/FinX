@@ -5,14 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/widget_sync_service.dart';
 import '../../data/datasource/expense_local_datasource.dart';
-import '../../data/models/account_model.dart';
+import 'package:xpens/features/accounts/data/models/account_model.dart';
 import '../../data/models/expense_model.dart';
 import '../../data/repositories/hive_expense_repository.dart';
-import '../../domain/repositories/account_repository.dart';
+import 'package:xpens/features/accounts/domain/repositories/account_repository.dart';
 import '../../domain/repositories/expense_repository.dart';
-import '../../presentation/screens/stats/stats_widgets.dart';
-import 'account_providers.dart';
-import 'preferences_providers.dart';
+import 'package:xpens/features/analytics/presentation/screens/stats/stats_widgets.dart';
+import 'package:xpens/features/accounts/presentation/provider/account_providers.dart';
+import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
 
 final expenseLocalDatasourceProvider = Provider<ExpenseLocalDatasource>((ref) {
   return ExpenseLocalDatasource();

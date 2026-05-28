@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xpens/features/expense/data/models/expense_model.dart';
-import 'package:xpens/features/expense/data/models/account_model.dart';
-import 'package:xpens/features/expense/data/models/recurring_subscription_model.dart';
+import 'package:xpens/features/accounts/data/models/account_model.dart';
+import 'package:xpens/features/recurring/data/models/recurring_subscription_model.dart';
 
 void main() {
   group('Model ID Generation Tests', () {

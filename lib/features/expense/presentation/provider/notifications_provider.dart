@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../data/models/recurring_subscription_model.dart';
-import 'budget_providers.dart';
+import 'package:xpens/features/recurring/data/models/recurring_subscription_model.dart';
+import 'package:xpens/features/categories/presentation/provider/budget_providers.dart';
 import 'expense_providers.dart';
-import 'preferences_providers.dart';
-import 'recurring_subscription_providers.dart';
+import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:xpens/features/recurring/presentation/provider/recurring_subscription_providers.dart';
 
 // ---------------------------------------------------------------------------
 // Domain model
