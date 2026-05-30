@@ -87,6 +87,9 @@ class ExpenseController {
     required String note,
     String? accountId,
     TransactionType type = TransactionType.expense,
+    String? subcategory,
+    double? latitude,
+    double? longitude,
   }) async {
     final expense = ExpenseModel.create(
       amount: amount,
@@ -95,6 +98,9 @@ class ExpenseController {
       note: note.trim(),
       accountId: accountId,
       type: type,
+      subcategory: subcategory,
+      latitude: latitude,
+      longitude: longitude,
     );
 
     await _applyBalanceAdjustments(nextExpense: expense);
@@ -108,6 +114,8 @@ class ExpenseController {
     required String toAccountId,
     required DateTime date,
     required String note,
+    double? latitude,
+    double? longitude,
   }) async {
     final transfer = ExpenseModel.create(
       amount: amount,
@@ -117,6 +125,8 @@ class ExpenseController {
       accountId: fromAccountId,
       toAccountId: toAccountId,
       type: TransactionType.transfer,
+      latitude: latitude,
+      longitude: longitude,
     );
 
     await _applyBalanceAdjustments(nextExpense: transfer);
@@ -133,6 +143,9 @@ class ExpenseController {
     String? accountId,
     String? toAccountId,
     TransactionType type = TransactionType.expense,
+    String? subcategory,
+    double? latitude,
+    double? longitude,
   }) async {
     final existingExpense = await _findExpenseById(id);
     if (existingExpense == null) {
@@ -149,6 +162,12 @@ class ExpenseController {
       toAccountId: type == TransactionType.transfer ? toAccountId : null,
       clearToAccountId: type != TransactionType.transfer || toAccountId == null,
       type: type,
+      subcategory: subcategory,
+      clearSubcategory: subcategory == null,
+      latitude: latitude,
+      clearLatitude: latitude == null,
+      longitude: longitude,
+      clearLongitude: longitude == null,
     );
 
     await _applyBalanceAdjustments(

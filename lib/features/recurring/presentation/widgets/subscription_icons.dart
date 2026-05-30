@@ -17,11 +17,23 @@ const List<SubscriptionIconOption> subscriptionIconOptions =
   SubscriptionIconOption(key: 'news', icon: Icons.newspaper_rounded),
 ];
 
-IconData resolveSubscriptionIcon(String key) {
-  return subscriptionIconOptions
+Widget resolveSubscriptionIcon(String key, {Color? color, double size = 16}) {
+  // Check if key contains non-ASCII characters (indicating it is an emoji)
+  final isEmoji = key.runes.any((r) => r > 127);
+  if (isEmoji) {
+    return Center(
+      child: Text(
+        key,
+        style: TextStyle(fontSize: size),
+      ),
+    );
+  }
+
+  final iconData = subscriptionIconOptions
       .firstWhere(
         (option) => option.key == key,
         orElse: () => subscriptionIconOptions.first,
       )
       .icon;
+  return Icon(iconData, color: color, size: size);
 }

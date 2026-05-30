@@ -3,6 +3,9 @@ package app.xpens.finance
 import android.app.Activity
 import android.content.Intent
 import android.speech.RecognizerIntent
+import android.app.PendingIntent
+import android.content.Context
+import android.net.Uri
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -49,9 +52,84 @@ class MainActivity : FlutterFragmentActivity() {
                     result.success(null)
                 }
 
+                // Flutter → Android: trigger a mock transaction notification
+                "triggerMockNotification" -> {
+                    val amount = call.argument<Double>("amount") ?: 1250.0
+                    val merchant = call.argument<String>("merchant") ?: "Mock Retail Shop"
+                    val isDebit = call.argument<Boolean>("isDebit") ?: true
+                    triggerMockNotification(amount, merchant, isDebit)
+                    result.success(null)
+                }
+
                 else -> result.notImplemented()
             }
         }
+    }
+
+    private fun triggerMockNotification(amount: Double, merchant: String, isDebit: Boolean) {
+        val channelId = "transactions_channel"
+        val channelName = "XPens Transactions"
+        val channelDesc = "Notifications for auto-detected SMS bank transactions"
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val importance = android.app.NotificationManager.IMPORTANCE_DEFAULT
+            val channel = android.app.NotificationChannel(channelId, channelName, importance).apply {
+                description = channelDesc
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        // Deep link pointing to SMS parser ingestion
+        val bodyText = if (isDebit) {
+            "Your a/c no. XXX123 is debited by Rs.$amount on 2026-05-30 at $merchant."
+        } else {
+            "Your a/c no. XXX123 is credited by Rs.$amount on 2026-05-30 from $merchant."
+        }
+        val encodedBody = java.net.URLEncoder.encode(bodyText, "UTF-8")
+        val encodedSender = java.net.URLEncoder.encode("BANK-SMS", "UTF-8")
+        val deepLinkUri = "xpens://widget?action=sms&body=$encodedBody&sender=$encodedSender"
+
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(deepLinkUri)).apply {
+            `package` = packageName
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+
+        val pendingIntentFlags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            System.currentTimeMillis().toInt(),
+            intent,
+            pendingIntentFlags
+        )
+
+        val iconRes = resources.getIdentifier("ic_launcher", "mipmap", packageName).let {
+            if (it != 0) it else android.R.drawable.ic_dialog_info
+        }
+
+        val title = if (isDebit) "Debit Transaction Detected" else "Credit Transaction Detected"
+        val formattedAmount = String.format("%,.0f", amount)
+        val text = if (isDebit) {
+            "Spent ₹$formattedAmount at $merchant. Tap to log."
+        } else {
+            "Received ₹$formattedAmount. Tap to log."
+        }
+
+        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(iconRes)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        notificationManager.notify(System.currentTimeMillis().toInt(), notification)
     }
 
     override fun onDestroy() {

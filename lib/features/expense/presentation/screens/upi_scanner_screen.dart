@@ -2,8 +2,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
-import '../../../../core/theme/app_colors.dart';
 import '../../../../routes/app_routes.dart';
+import 'package:xpens/shared/widgets/app_page_header.dart';
 
 /// A QR scanner specialised for the "Pay via UPI" flow.
 ///
@@ -131,10 +131,8 @@ class _UpiScannerScreenState extends State<UpiScannerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Pay via UPI'),
-        backgroundColor: AppColors.primaryBlue,
-        foregroundColor: Colors.white,
+      appBar: const GradientAppBar(
+        title: 'Pay via UPI',
       ),
       body: Stack(
         children: [

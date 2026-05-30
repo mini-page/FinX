@@ -3,6 +3,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/app_page_header.dart';
 
 /// Support the Project screen accessible from Settings → About.
 class SupportScreen extends StatelessWidget {
@@ -24,15 +25,8 @@ class SupportScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      appBar: AppBar(
-        title: const Text(
-          'Support the Project',
-          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        foregroundColor: AppColors.textDark,
-        centerTitle: false,
+      appBar: const GradientAppBar(
+        title: 'Support the Project',
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 48),

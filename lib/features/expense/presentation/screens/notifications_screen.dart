@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_tokens.dart';
+import '../../../../shared/widgets/app_page_header.dart';
 import '../provider/notifications_provider.dart';
 
 /// Production-ready Notifications screen.
@@ -22,29 +23,17 @@ class NotificationsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 1,
-        surfaceTintColor: Colors.white,
-        leading: IconButton(
-          tooltip: 'Back',
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            size: 20,
-            color: AppColors.textDark,
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+      appBar: GradientAppBar(
         title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
+          mainAxisSize: MainAxisSize.min,
+          children: [
             const Text(
               'Notifications',
               style: TextStyle(
                 color: AppColors.textDark,
                 fontWeight: FontWeight.w900,
                 fontSize: 18,
+                letterSpacing: -0.5,
               ),
             ),
             if (unreadCount > 0)
@@ -52,7 +41,7 @@ class NotificationsScreen extends ConsumerWidget {
                 '$unreadCount unread',
                 style: const TextStyle(
                   color: AppColors.primaryBlue,
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
                 ),
               ),

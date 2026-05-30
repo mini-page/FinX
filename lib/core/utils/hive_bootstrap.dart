@@ -11,6 +11,8 @@ import 'package:xpens/features/settings/data/models/app_preferences_model.dart';
 import 'package:xpens/features/categories/data/models/budget_model.dart';
 import 'package:xpens/features/expense/data/models/expense_model.dart';
 import 'package:xpens/features/recurring/data/models/recurring_subscription_model.dart';
+import 'package:xpens/features/tags/data/datasource/tag_shorthand_local_datasource.dart';
+import 'package:xpens/features/tags/data/models/tag_shorthand_model.dart';
 
 abstract final class HiveBootstrap {
   static Future<void> initialize() async {
@@ -32,6 +34,9 @@ abstract final class HiveBootstrap {
       RecurringSubscriptionModelAdapter.typeIdValue,
     )) {
       Hive.registerAdapter(RecurringSubscriptionModelAdapter());
+    }
+    if (!Hive.isAdapterRegistered(TagShorthandModelAdapter.typeIdValue)) {
+      Hive.registerAdapter(TagShorthandModelAdapter());
     }
 
     if (!Hive.isBoxOpen(ExpenseLocalDatasource.boxName)) {
@@ -55,6 +60,9 @@ abstract final class HiveBootstrap {
     }
     if (!Hive.isBoxOpen(MonthBudgetLocalDatasource.boxName)) {
       await Hive.openBox<double>(MonthBudgetLocalDatasource.boxName);
+    }
+    if (!Hive.isBoxOpen(TagShorthandLocalDatasource.boxName)) {
+      await Hive.openBox<TagShorthandModel>(TagShorthandLocalDatasource.boxName);
     }
   }
 }

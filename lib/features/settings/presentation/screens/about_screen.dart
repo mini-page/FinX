@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_assets.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/services/update_service.dart';
+import '../../../../core/utils/context_extensions.dart';
+import '../../../../shared/widgets/app_page_header.dart';
 import 'settings/settings_widgets.dart';
 import 'support_screen.dart';
 
 /// About & Developer screen shown from the Settings → About section.
-class AboutScreen extends StatelessWidget {
+class AboutScreen extends ConsumerWidget {
   const AboutScreen({super.key});
 
   // ── Developer links ──────────────────────────────────────────────────────
@@ -21,6 +25,7 @@ class AboutScreen extends StatelessWidget {
   static const String _repoUrl = 'https://github.com/mini-page/XPens';
   static const String _issuesUrl = 'https://github.com/mini-page/XPens/issues';
   static const String _email = 'xpens-support@gmail.com';
+  static const int _kMaxReleaseNotesLength = 280;
 
   Future<void> _launchUrl(String url) async {
     final uri = Uri.parse(url);
@@ -30,18 +35,13 @@ class AboutScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final updateState = ref.watch(updateCheckerProvider);
+
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      appBar: AppBar(
-        title: const Text(
-          'About',
-          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        foregroundColor: AppColors.textDark,
-        centerTitle: false,
+      appBar: const GradientAppBar(
+        title: 'About',
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 48),
@@ -50,6 +50,15 @@ class AboutScreen extends StatelessWidget {
           children: [
             // ── App identity card ───────────────────────────────────────────
             _AppIdentityCard(),
+            const SizedBox(height: 28),
+
+            // ── Update Checker ──────────────────────────────────────────────
+            const SettingsSectionHeader(title: 'Updates'),
+            SettingsCard(
+              children: [
+                _buildUpdateTile(context, ref, updateState),
+              ],
+            ),
             const SizedBox(height: 28),
 
             // ── Developer section ───────────────────────────────────────────
@@ -144,6 +153,155 @@ class AboutScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildUpdateTile(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<UpdateInfo?> state,
+  ) {
+    if (state.isLoading) {
+      return ListTile(
+        leading: const SettingsTileIcon(icon: Icons.system_update_outlined),
+        title: const Text(
+          'Checking for Updates\u2026',
+          style:
+              TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700),
+        ),
+        subtitle: const Text(
+          'Please wait a moment',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+        ),
+        trailing: const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    if (state.hasValue && state.value != null) {
+      final info = state.value!;
+      return ListTile(
+        leading: const SettingsTileIcon(icon: Icons.system_update_outlined),
+        title: const Text(
+          'Update Available',
+          style: TextStyle(
+              color: AppColors.primaryBlue, fontWeight: FontWeight.w700),
+        ),
+        subtitle: Text(
+          'v${info.latestVersion} is ready to download',
+          style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+        ),
+        trailing: _UpdateBadge(label: 'Download'),
+        onTap: () => _showUpdateDialog(context, ref, info),
+      );
+    }
+
+    if (state.hasError) {
+      return ListTile(
+        leading: const SettingsTileIcon(icon: Icons.system_update_outlined),
+        title: const Text(
+          'Check for Updates',
+          style:
+              TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700),
+        ),
+        subtitle: const Text(
+          'Could not connect. Tap to retry',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+        ),
+        trailing: const Icon(Icons.refresh_rounded, color: AppColors.textMuted),
+        onTap: () => ref.read(updateCheckerProvider.notifier).check(),
+      );
+    }
+
+    return ListTile(
+      leading: const SettingsTileIcon(icon: Icons.system_update_outlined),
+      title: const Text(
+        'Check for Updates',
+        style:
+            TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        'Current version: v${AppConstants.version}',
+        style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+      ),
+      trailing:
+          const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+      onTap: () => ref.read(updateCheckerProvider.notifier).check(),
+    );
+  }
+
+  Future<void> _showUpdateDialog(
+    BuildContext context,
+    WidgetRef ref,
+    UpdateInfo info,
+  ) async {
+    final notes = info.releaseNotes;
+    final hasNotes = notes != null && notes.trim().isNotEmpty;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.system_update_outlined, color: AppColors.primaryBlue),
+            SizedBox(width: 10),
+            Text('Update Available'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'A new version of XPens is available.\n\n'
+              'v${AppConstants.version}  \u2192  v${info.latestVersion}',
+              style: const TextStyle(fontSize: 14),
+            ),
+            if (hasNotes) ...[
+              const SizedBox(height: 12),
+              const Text(
+                "What's new:",
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                notes.length > _kMaxReleaseNotesLength
+                    ? '${notes.substring(0, _kMaxReleaseNotesLength).trimRight()}\u2026'
+                    : notes,
+                style:
+                    const TextStyle(fontSize: 12, color: AppColors.textMuted),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Later'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final uri = Uri.parse(info.releaseUrl);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              } else if (context.mounted) {
+                context.showSnackBar(
+                  'Could not open the download link. '
+                  'Visit github.com/mini-page/XPens/releases manually.',
+                );
+              }
+            },
+            icon: const Icon(Icons.download_rounded, size: 18),
+            label: const Text('Download'),
+          ),
+        ],
       ),
     );
   }
@@ -260,7 +418,6 @@ class _DeveloperCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Avatar + name row
           Row(
             children: [
               CircleAvatar(
@@ -294,7 +451,6 @@ class _DeveloperCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          // Bio
           const Text(
             "I'm a passionate developer building useful apps in my free time. "
             "Every bit of support helps me keep building and improving XPens.",
@@ -305,7 +461,6 @@ class _DeveloperCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          // Social links wrap
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -333,7 +488,6 @@ class _DeveloperCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          // Email
           GestureDetector(
             onTap: () => onLaunchUrl('mailto:$email'),
             child: Row(
@@ -438,6 +592,31 @@ class _ActionTile extends StatelessWidget {
       trailing:
           const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
       onTap: onTap,
+    );
+  }
+}
+
+class _UpdateBadge extends StatelessWidget {
+  const _UpdateBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.primaryBlue,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }

@@ -12,19 +12,19 @@ final List<RecurringSeed> defaultSubscriptions = <RecurringSeed>[
   RecurringSeed(
     name: 'Netflix',
     amount: 499,
-    iconKey: 'tv',
+    iconKey: '📺',
     nextBillDate: DateTime.utc(2026, 4, 25),
   ),
   RecurringSeed(
     name: 'Spotify',
     amount: 119,
-    iconKey: 'music',
+    iconKey: '🎵',
     nextBillDate: DateTime.utc(2026, 4, 1),
   ),
   RecurringSeed(
     name: 'YouTube',
     amount: 129,
-    iconKey: 'video',
+    iconKey: '🍿',
     nextBillDate: DateTime.utc(2026, 4, 8),
   ),
 ];
@@ -142,6 +142,7 @@ class RecurringSubscriptionController {
     required String iconKey,
     String note = '',
     bool isActive = true,
+    String billingPeriod = 'monthly',
   }) async {
     final subscription = id == null
         ? RecurringSubscriptionModel.create(
@@ -151,6 +152,7 @@ class RecurringSubscriptionController {
             iconKey: iconKey,
             note: note,
             isActive: isActive,
+            billingPeriod: billingPeriod,
           )
         : RecurringSubscriptionModel(
             id: id,
@@ -160,6 +162,7 @@ class RecurringSubscriptionController {
             iconKey: iconKey,
             note: note,
             isActive: isActive,
+            billingPeriod: billingPeriod,
           );
 
     await ref

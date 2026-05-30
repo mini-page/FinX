@@ -26,6 +26,7 @@ class AppPreferencesModel {
     this.customIncomeCategoriesJson = '',
     this.builtInExpenseCategoryOverridesJson = '',
     this.builtInIncomeCategoryOverridesJson = '',
+    this.categorySubcategoriesJson = '',
     this.smsParsingEnabled = false,
     this.smsDefaultAccountId = '',
     this.smsDefaultCategory = '',
@@ -61,6 +62,7 @@ class AppPreferencesModel {
     customIncomeCategoriesJson: '',
     builtInExpenseCategoryOverridesJson: '',
     builtInIncomeCategoryOverridesJson: '',
+    categorySubcategoriesJson: '',
     smsParsingEnabled: false,
     smsDefaultAccountId: '',
     smsDefaultCategory: '',
@@ -120,6 +122,9 @@ class AppPreferencesModel {
 
   /// JSON-serialised list of built-in income category icon/colour overrides.
   final String builtInIncomeCategoryOverridesJson;
+
+  /// JSON-serialised map of category name to list of subcategories.
+  final String categorySubcategoriesJson;
 
   // ── SMS Parsing ─────────────────────────────────────────────────────────
 
@@ -184,6 +189,7 @@ class AppPreferencesModel {
     String? customIncomeCategoriesJson,
     String? builtInExpenseCategoryOverridesJson,
     String? builtInIncomeCategoryOverridesJson,
+    String? categorySubcategoriesJson,
     bool? smsParsingEnabled,
     String? smsDefaultAccountId,
     String? smsDefaultCategory,
@@ -233,6 +239,8 @@ class AppPreferencesModel {
               this.builtInExpenseCategoryOverridesJson,
       builtInIncomeCategoryOverridesJson: builtInIncomeCategoryOverridesJson ??
           this.builtInIncomeCategoryOverridesJson,
+      categorySubcategoriesJson:
+          categorySubcategoriesJson ?? this.categorySubcategoriesJson,
       smsParsingEnabled: smsParsingEnabled ?? this.smsParsingEnabled,
       smsDefaultAccountId: smsDefaultAccountId ?? this.smsDefaultAccountId,
       smsDefaultCategory: smsDefaultCategory ?? this.smsDefaultCategory,
@@ -293,6 +301,8 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
         AppPreferencesModel.defaults.builtInExpenseCategoryOverridesJson;
     String builtInIncomeCategoryOverridesJson =
         AppPreferencesModel.defaults.builtInIncomeCategoryOverridesJson;
+    String categorySubcategoriesJson =
+        AppPreferencesModel.defaults.categorySubcategoriesJson;
     bool smsParsingEnabled = AppPreferencesModel.defaults.smsParsingEnabled;
     String smsDefaultAccountId =
         AppPreferencesModel.defaults.smsDefaultAccountId;
@@ -353,6 +363,9 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
       if (reader.availableBytes > 0) {
         builtInIncomeCategoryOverridesJson = reader.readString();
       }
+      if (reader.availableBytes > 0) {
+        categorySubcategoriesJson = reader.readString();
+      }
       if (reader.availableBytes > 0) smsParsingEnabled = reader.readBool();
       if (reader.availableBytes > 0) smsDefaultAccountId = reader.readString();
       if (reader.availableBytes > 0) smsDefaultCategory = reader.readString();
@@ -392,6 +405,7 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
       customIncomeCategoriesJson: customIncomeCategoriesJson,
       builtInExpenseCategoryOverridesJson: builtInExpenseCategoryOverridesJson,
       builtInIncomeCategoryOverridesJson: builtInIncomeCategoryOverridesJson,
+      categorySubcategoriesJson: categorySubcategoriesJson,
       smsParsingEnabled: smsParsingEnabled,
       smsDefaultAccountId: smsDefaultAccountId,
       smsDefaultCategory: smsDefaultCategory,
@@ -435,6 +449,7 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
       ..writeString(obj.customIncomeCategoriesJson)
       ..writeString(obj.builtInExpenseCategoryOverridesJson)
       ..writeString(obj.builtInIncomeCategoryOverridesJson)
+      ..writeString(obj.categorySubcategoriesJson)
       ..writeBool(obj.smsParsingEnabled)
       ..writeString(obj.smsDefaultAccountId)
       ..writeString(obj.smsDefaultCategory)

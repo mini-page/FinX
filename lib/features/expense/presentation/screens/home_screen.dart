@@ -48,10 +48,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final currencyFormat = ref.watch(currencyFormatProvider);
     final today = DateUtils.dateOnly(DateTime.now());
     final isOnToday = DateUtils.isSameDay(_selectedDate, today);
-    final visibleDates = List<DateTime>.generate(
-      7,
-      (index) => _windowStart.add(Duration(days: index)),
-    );
+
     final selectedExpenses = expenses
         .where((expense) => _isSameLocalDay(expense.date, _selectedDate))
         .toList(growable: false)
@@ -136,7 +133,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       HomeDateStrip(
-                        visibleDates: visibleDates,
+                        expenses: expenses,
                         selectedDate: _selectedDate,
                         isOnToday: isOnToday,
                         selectedTotalText: formatSignedCurrencyForHome(
@@ -153,6 +150,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         onPrevious: () => _shiftWindow(-7),
                         onNext: () => _shiftWindow(7),
                         onJumpToToday: _jumpToToday,
+                        onMonthTap: (date) => AppRoutes.pushCalendarView(context, initialDate: date),
                       ),
                       const SizedBox(height: 14),
                       Row(
@@ -258,6 +256,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       initialAccountId: expense.accountId,
       initialToAccountId: expense.toAccountId,
       initialType: expense.type,
+      initialSubcategory: expense.subcategory,
+      initialLatitude: expense.latitude,
+      initialLongitude: expense.longitude,
     );
   }
 

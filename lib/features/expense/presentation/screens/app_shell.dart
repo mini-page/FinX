@@ -11,7 +11,7 @@ import '../../../../routes/app_routes.dart';
 import '../../../../shared/widgets/floating_nav_bar.dart';
 import '../../data/models/expense_model.dart';
 import '../provider/expense_providers.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:xpens/features/settings/settings.dart';
 import '../widgets/power_pill_menu.dart';
 import 'package:xpens/features/accounts/accounts.dart';
 import 'package:xpens/features/categories/presentation/screens/categories_screen.dart';
@@ -19,6 +19,7 @@ import 'home_screen.dart';
 import 'package:xpens/features/analytics/presentation/screens/stats_screen.dart';
 import 'voice_entry_screen.dart';
 import '../../../sms_parser/presentation/screens/sms_settings_sheet.dart';
+import '../../../sms_parser/domain/sms_parser_engine.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -213,6 +214,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       StatsScreen(),
       const CategoriesScreen(),
       const AccountsScreen(),
+      const SettingsScreen(),
     ];
   }
 
@@ -265,12 +267,21 @@ class _AppShellState extends ConsumerState<AppShell> {
               ),
             ),
           ),
-          // Power FAB — direct add expense
-          Positioned(
+          // Power FAB — direct add expense (slides away and fades out when not on Home or when nav bar is hidden)
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
             right: 16,
-            bottom: 96,
-            child: PowerFab(
-              onQuickAdd: _openAddExpenseScreen,
+            bottom: (_selectedIndex == 0 && _navBarVisible) ? 96 : -100,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: (_selectedIndex == 0 && _navBarVisible) ? 1.0 : 0.0,
+              child: IgnorePointer(
+                ignoring: _selectedIndex != 0 || !_navBarVisible,
+                child: PowerFab(
+                  onQuickAdd: _openAddExpenseScreen,
+                ),
+              ),
             ),
           ),
           // NavBar — auto-hides on scroll down
@@ -315,34 +326,60 @@ class _AppShellState extends ConsumerState<AppShell> {
   /// Expected URI format: `xpens://widget?action=<action>`
   void _handleWidgetUri(Uri? uri) {
     if (uri == null || !mounted) return;
-    final action = uri.queryParameters['action'];
-    if (action == null) return;
-    _routeWidgetAction(action);
+    _routeWidgetAction(uri);
   }
 
-  Future<void> _routeWidgetAction(String action) async {
+  Future<void> _routeWidgetAction(Uri uri) async {
+    final action = uri.queryParameters['action'];
     switch (action) {
       case 'add_expense':
         await AppRoutes.pushAddExpense(
           context,
           initialType: TransactionType.expense,
         );
+        break;
       case 'add_income':
         await AppRoutes.pushAddExpense(
           context,
           initialType: TransactionType.income,
         );
+        break;
       case 'add_transfer':
         await AppRoutes.pushAddExpense(
           context,
           initialType: TransactionType.transfer,
         );
+        break;
       case 'scanner':
         if (mounted) await AppRoutes.pushScanner(context);
+        break;
       case 'voice':
         if (mounted) await _showVoiceEntry();
+        break;
       case 'sms':
-        if (mounted) await showSmsSettingsSheet(context);
+        final body = uri.queryParameters['body'];
+        final sender = uri.queryParameters['sender'];
+        if (body != null && body.isNotEmpty) {
+          final parsed = SmsParserEngine.parse(
+            senderAddress: sender ?? 'BANK',
+            body: body,
+            receivedAt: DateTime.now(),
+          );
+          if (parsed != null && mounted) {
+            await AppRoutes.pushAddExpense(
+              context,
+              initialAmount: parsed.amount,
+              initialCategory: parsed.suggestedCategory,
+              initialNote: parsed.notes,
+              initialType: parsed.type,
+            );
+          } else {
+            if (mounted) await showSmsSettingsSheet(context);
+          }
+        } else {
+          if (mounted) await showSmsSettingsSheet(context);
+        }
+        break;
       // 'open_app' — just bring app to foreground, no extra navigation needed
     }
   }

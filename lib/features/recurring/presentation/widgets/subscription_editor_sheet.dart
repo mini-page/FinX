@@ -15,6 +15,7 @@ class SubscriptionFormResult {
     required this.iconKey,
     required this.note,
     required this.isActive,
+    required this.billingPeriod,
   });
 
   final String? id;
@@ -24,6 +25,7 @@ class SubscriptionFormResult {
   final String iconKey;
   final String note;
   final bool isActive;
+  final String billingPeriod;
 }
 
 Future<SubscriptionFormResult?> showSubscriptionEditorSheet(
@@ -55,6 +57,7 @@ class _SubscriptionEditorSheetState extends State<_SubscriptionEditorSheet> {
   late DateTime _nextBillDate;
   late String _iconKey;
   late bool _isActive;
+  late String _billingPeriod;
 
   @override
   void initState() {
@@ -73,6 +76,7 @@ class _SubscriptionEditorSheetState extends State<_SubscriptionEditorSheet> {
     _iconKey =
         widget.subscription?.iconKey ?? subscriptionIconOptions.first.key;
     _isActive = widget.subscription?.isActive ?? true;
+    _billingPeriod = widget.subscription?.billingPeriod ?? 'monthly';
   }
 
   @override
@@ -173,8 +177,81 @@ class _SubscriptionEditorSheetState extends State<_SubscriptionEditorSheet> {
               ),
             ),
             const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Icon / Emoji',
+                  style: TextStyle(
+                    color: AppColors.textDark,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.textSecondary, size: 20),
+                  onPressed: () async {
+                    final emojiController = TextEditingController();
+                    final customEmoji = await showDialog<String>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        title: const Text('Enter Custom Emoji', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        content: TextField(
+                          controller: emojiController,
+                          maxLength: 2,
+                          decoration: const InputDecoration(hintText: 'e.g. 🍿'),
+                          autofocus: true,
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, emojiController.text.trim()),
+                            child: const Text('Add'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (customEmoji != null && customEmoji.isNotEmpty) {
+                      setState(() {
+                        _iconKey = customEmoji;
+                      });
+                    }
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                // Support legacy icon keys by rendering them if they are selected
+                if (!['📺', '🎵', '🍿', '💾', '🏋️', '📰', '🌐', '🎮', '💼'].contains(_iconKey))
+                  ChoiceChip(
+                    label: resolveSubscriptionIcon(_iconKey, color: AppColors.primaryBlue, size: 18),
+                    selected: true,
+                    selectedColor: AppColors.primaryBlue.withOpacity(0.2),
+                    backgroundColor: AppColors.lightBlueBg,
+                    onSelected: (_) {},
+                  ),
+                ...['📺', '🎵', '🍿', '💾', '🏋️', '📰', '🌐', '🎮', '💼'].map((emoji) {
+                  final isSelected = emoji == _iconKey;
+                  return ChoiceChip(
+                    label: Text(
+                      emoji,
+                      style: const TextStyle(fontSize: 18),
+                    ),
+                    selected: isSelected,
+                    selectedColor: AppColors.primaryBlue.withOpacity(0.2),
+                    backgroundColor: AppColors.lightBlueBg,
+                    onSelected: (_) => setState(() => _iconKey = emoji),
+                  );
+                }),
+              ],
+            ),
+            const SizedBox(height: 16),
             const Text(
-              'Icon',
+              'Billing Period',
               style: TextStyle(
                 color: AppColors.textDark,
                 fontWeight: FontWeight.w800,
@@ -182,21 +259,32 @@ class _SubscriptionEditorSheetState extends State<_SubscriptionEditorSheet> {
             ),
             const SizedBox(height: 12),
             Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: subscriptionIconOptions.map((option) {
-                final isSelected = option.key == _iconKey;
+              spacing: 8,
+              runSpacing: 8,
+              children: ['weekly', 'monthly', 'quarterly', 'yearly'].map((period) {
+                final isSelected = period == _billingPeriod;
+                String displayLabel = period;
+                if (period == 'weekly') displayLabel = 'Weekly';
+                if (period == 'monthly') displayLabel = 'Monthly';
+                if (period == 'quarterly') displayLabel = 'Quarterly';
+                if (period == 'yearly') displayLabel = 'Yearly';
+
                 return ChoiceChip(
-                  label: Icon(
-                    option.icon,
-                    color: isSelected ? Colors.white : AppColors.primaryBlue,
+                  label: Text(
+                    displayLabel,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : AppColors.primaryBlue,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
                   ),
                   selected: isSelected,
                   selectedColor: AppColors.primaryBlue,
                   backgroundColor: AppColors.lightBlueBg,
-                  onSelected: (_) => setState(() => _iconKey = option.key),
+                  checkmarkColor: Colors.white,
+                  onSelected: (_) => setState(() => _billingPeriod = period),
                 );
-              }).toList(growable: false),
+              }).toList(),
             ),
             const SizedBox(height: 16),
             SwitchListTile.adaptive(
@@ -277,6 +365,7 @@ class _SubscriptionEditorSheetState extends State<_SubscriptionEditorSheet> {
         iconKey: _iconKey,
         note: _noteController.text.trim(),
         isActive: _isActive,
+        billingPeriod: _billingPeriod,
       ),
     );
   }

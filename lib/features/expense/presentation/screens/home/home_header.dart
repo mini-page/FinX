@@ -111,22 +111,7 @@ class HomeTopBar extends StatelessWidget {
                 ),
             ],
           ),
-          IconButton(
-            tooltip: 'Settings',
-            onPressed: () => AppRoutes.pushSettings(context),
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha(25),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.settings_outlined,
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
-          ),
+
         ],
       ),
     );
@@ -294,7 +279,7 @@ class _HomeHeaderState extends State<HomeHeader> {
                                 ),
                               ),
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Row(
@@ -328,6 +313,7 @@ class _HomeHeaderState extends State<HomeHeader> {
                                     _netWorthRevealed
                                         ? widget.currencyFormat.format(widget.accountSummary.totalBalance)
                                         : '• • •',
+                                    textAlign: TextAlign.center,
                                     style: const TextStyle(
                                       color: AppColors.primaryBlue,
                                       fontSize: 14,

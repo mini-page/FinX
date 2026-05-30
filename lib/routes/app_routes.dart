@@ -4,11 +4,10 @@ import '../features/expense/data/models/expense_model.dart';
 import '../features/expense/presentation/screens/add_expense_screen.dart';
 import '../features/expense/presentation/screens/notifications_screen.dart';
 import '../features/expense/presentation/screens/records_history_screen.dart';
-import '../features/expense/presentation/screens/product_scanner_screen.dart';
-import '../features/expense/presentation/screens/receipt_scanner_screen.dart';
 import '../features/expense/presentation/screens/unified_scanner_screen.dart';
 import 'package:xpens/features/settings/presentation/screens/settings_screen.dart';
 import '../features/expense/presentation/screens/upi_scanner_screen.dart';
+import '../features/expense/presentation/screens/calendar_view_screen.dart';
 
 /// Centralised navigation helpers for XPens.
 ///
@@ -55,6 +54,9 @@ abstract final class AppRoutes {
     String? initialAccountId,
     String? initialToAccountId,
     TransactionType initialType = TransactionType.expense,
+    String? initialSubcategory,
+    double? initialLatitude,
+    double? initialLongitude,
   }) {
     return Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -67,14 +69,26 @@ abstract final class AppRoutes {
           initialAccountId: initialAccountId,
           initialToAccountId: initialToAccountId,
           initialType: initialType,
+          initialSubcategory: initialSubcategory,
+          initialLatitude: initialLatitude,
+          initialLongitude: initialLongitude,
         ),
       ),
     );
   }
 
+  // ── Calendar View ──────────────────────────────────────────────────────────
+
+  /// Push the calendar and timeline view screen.
+  static Future<void> pushCalendarView(BuildContext context, {DateTime? initialDate}) {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => CalendarViewScreen(initialDate: initialDate)),
+    );
+  }
+
   // ── Records History ────────────────────────────────────────────────────────
 
-  /// Push the full transaction history screen.
+  /// Push the transaction history screen.
   static Future<void> pushRecordsHistory(BuildContext context) {
     return Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: (_) => const RecordsHistoryScreen()),
@@ -164,23 +178,7 @@ abstract final class AppRoutes {
     );
   }
 
-  // ── Receipt Scanner ────────────────────────────────────────────────────────
 
-  /// Push the receipt / bill barcode–QR scanner screen.
-  static Future<void> pushReceiptScanner(BuildContext context) {
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const ReceiptScannerScreen()),
-    );
-  }
-
-  // ── Product Scanner (AI) ───────────────────────────────────────────────────
-
-  /// Push the AI-powered product photo scanner screen.
-  static Future<void> pushProductScanner(BuildContext context) {
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const ProductScannerScreen()),
-    );
-  }
 
   // ── Scanner (legacy alias) ─────────────────────────────────────────────────
 

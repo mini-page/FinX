@@ -8,6 +8,11 @@
     <!-- Biometric lock -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
+    <!-- Notifications for Android 13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Location tracking for transaction mapping -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:label="XPens"
@@ -36,6 +41,13 @@
             </intent-filter>
             <intent-filter>
                 <action android:name="es.antonborri.home_widget.action.LAUNCH"/>
+            </intent-filter>
+            <!-- Deep link handler for background notifications and widgets -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="xpens" android:host="widget" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
@@ -69,6 +81,16 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/recent_transactions_widget_info" />
+        </receiver>
+
+        <!-- Statically registered SMS receiver for background transaction logging -->
+        <receiver
+            android:name=".SmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
         </receiver>
     </application>
     <!-- Required to query activities that can process text, see:

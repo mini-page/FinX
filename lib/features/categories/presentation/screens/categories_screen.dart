@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../shared/widgets/app_tab_switcher.dart';
+import '../../../../shared/widgets/app_search_bar.dart';
 import 'package:xpens/features/accounts/accounts.dart';
 import '../../data/models/custom_category_model.dart';
 import 'package:xpens/features/expense/data/models/expense_model.dart';
@@ -96,6 +97,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
         ref.watch(customExpenseCategoryListProvider);
     final customIncomeCategories = ref.watch(customIncomeCategoryListProvider);
     final accounts = accountState.value ?? const <AccountModel>[];
+    final subcategoriesMap = ref.watch(categorySubcategoriesProvider);
 
     final now = DateTime.now();
     final canSetBudget = selectedMonth.year > now.year ||
@@ -132,6 +134,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
                 allIncomeCategories: allIncomeCategories,
                 customExpenseCategories: customExpenseCategories,
                 customIncomeCategories: customIncomeCategories,
+                subcategoriesMap: subcategoriesMap,
               );
               final filteredCards = _searchQuery.isEmpty
                   ? allCards
@@ -243,42 +246,19 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
             const SizedBox(height: AppSpacing.sm),
 
             // ── Search bar ────────────────────────────────────────────────
-            TextField(
+            AppSearchBar(
               controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search ${_modeName(_mode)}...',
-                hintStyle: const TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-                prefixIcon: const Icon(Icons.search_rounded,
-                    color: AppColors.textMuted, size: 20),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.close_rounded,
-                            size: 18, color: AppColors.textMuted),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: AppColors.surfaceLight,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadii.md),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                isDense: true,
-              ),
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
-              ),
+              hintText: 'Search ${_modeName(_mode)}...',
+              onChanged: (val) {
+                setState(() {
+                  _searchQuery = val.trim().toLowerCase();
+                });
+              },
+              onClear: () {
+                setState(() {
+                  _searchQuery = '';
+                });
+              },
             ),
             const SizedBox(height: AppSpacing.sm),
 
@@ -336,6 +316,17 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
           onTap: entry.onTap,
           onToggle: entry.onToggle,
           amountColor: entry.amountColor,
+          subcategories: entry.subcategories,
+          onAddSubcategory: mode == _BoardMode.accounts
+              ? null
+              : (sub) {
+                  ref.read(appPreferencesControllerProvider).addSubcategory(entry.title, sub);
+                },
+          onRemoveSubcategory: mode == _BoardMode.accounts
+              ? null
+              : (sub) {
+                  ref.read(appPreferencesControllerProvider).removeSubcategory(entry.title, sub);
+                },
         );
       },
     );
@@ -418,6 +409,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
     required List<ExpenseCategory> allIncomeCategories,
     required List<CustomCategoryModel> customExpenseCategories,
     required List<CustomCategoryModel> customIncomeCategories,
+    required Map<String, List<String>> subcategoriesMap,
   }) {
     final builtInExpenseNames = expenseCategories.map((c) => c.name).toSet();
     final builtInIncomeNames = incomeCategories.map((c) => c.name).toSet();
@@ -467,6 +459,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
                       ),
               onToggle: (value) =>
                   _setExpenseCategoryEnabled(category.name, value),
+              subcategories: subcategoriesMap[category.name] ?? const <String>[],
             );
           },
         ).toList(growable: false);
@@ -511,6 +504,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
                       ),
               onToggle: (value) =>
                   _setIncomeCategoryEnabled(category.name, value),
+              subcategories: subcategoriesMap[category.name] ?? const <String>[],
             );
           },
         ).toList(growable: false);

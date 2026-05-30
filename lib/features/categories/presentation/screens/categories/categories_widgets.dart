@@ -201,6 +201,9 @@ class CategoryListCard extends StatelessWidget {
     this.onTap,
     this.progressLabel,
     this.amountColor,
+    this.subcategories = const <String>[],
+    this.onAddSubcategory,
+    this.onRemoveSubcategory,
   });
 
   final String title;
@@ -213,6 +216,69 @@ class CategoryListCard extends StatelessWidget {
   final VoidCallback? onTap;
   final ValueChanged<bool> onToggle;
   final Color? amountColor;
+  final List<String> subcategories;
+  final void Function(String)? onAddSubcategory;
+  final void Function(String)? onRemoveSubcategory;
+
+  void _showAddSubcategoryDialog(BuildContext context) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Add Subcategory to $title', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'e.g. breakfast, train, coffee',
+            isDense: true,
+          ),
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final val = controller.text.trim();
+              if (val.isNotEmpty) {
+                onAddSubcategory?.call(val);
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteConfirm(BuildContext context, String sub) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Subcategory', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        content: Text('Are you sure you want to delete subcategory "$sub"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              onRemoveSubcategory?.call(sub);
+              Navigator.pop(ctx);
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -236,73 +302,148 @@ class CategoryListCard extends StatelessWidget {
               horizontal: AppSpacing.sm,
               vertical: AppSpacing.sm,
             ),
-            child: Row(
-              children: <Widget>[
-                _IconBadge(icon: icon, tone: tone, enabled: isEnabled),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.textDark,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          height: 1.2,
-                        ),
-                      ),
-                      if (progressLabel != null) ...<Widget>[
-                        const SizedBox(height: 3),
-                        Text(
-                          progressLabel!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            height: 1.2,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: AppSpacing.xs),
-                      _ProgressBar(
-                          value: progress, color: resolvedProgressColor),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
                   children: <Widget>[
-                    Text(
-                      amount,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: resolvedAmountColor,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        height: 1,
-                        fontFeatures: const <FontFeature>[
-                          FontFeature.tabularFigures(),
+                    _IconBadge(icon: icon, tone: tone, enabled: isEnabled),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.textDark,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              height: 1.2,
+                            ),
+                          ),
+                          if (progressLabel != null) ...<Widget>[
+                            const SizedBox(height: 3),
+                            Text(
+                              progressLabel!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: AppSpacing.xs),
+                          _ProgressBar(
+                              value: progress, color: resolvedProgressColor),
                         ],
                       ),
                     ),
-                    const SizedBox(height: AppSpacing.xs),
-                    AppToggleSwitch(
-                      value: isEnabled,
-                      activeColor: AppColors.primaryBlue,
-                      onChanged: onToggle,
+                    const SizedBox(width: AppSpacing.sm),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          amount,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: resolvedAmountColor,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            height: 1,
+                            fontFeatures: const <FontFeature>[
+                              FontFeature.tabularFigures(),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        AppToggleSwitch(
+                          value: isEnabled,
+                          activeColor: AppColors.primaryBlue,
+                          onChanged: onToggle,
+                        ),
+                      ],
                     ),
                   ],
                 ),
+                if (isEnabled && (subcategories.isNotEmpty || onAddSubcategory != null)) ...[
+                  const SizedBox(height: AppSpacing.xs),
+                  const Divider(color: Color(0xFFF1F5F9), height: 1, thickness: 1),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 40,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: subcategories.length + (onAddSubcategory != null ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        final showAdd = onAddSubcategory != null;
+
+                        if (showAdd && index == 0) {
+                          // The + Add chip (first place always)
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: ActionChip(
+                              label: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.add_rounded, size: 14, color: AppColors.primaryBlue),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Add',
+                                    style: TextStyle(
+                                      color: AppColors.primaryBlue,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: AppColors.lightBlueBg,
+                              side: BorderSide.none,
+                              shape: const StadiumBorder(),
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              onPressed: () => _showAddSubcategoryDialog(context),
+                            ),
+                          );
+                        }
+
+                        final subIndex = showAdd ? index - 1 : index;
+                        final sub = subcategories[subIndex];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: GestureDetector(
+                            onLongPress: onRemoveSubcategory != null ? () {
+                              _showDeleteConfirm(context, sub);
+                            } : null,
+                            child: Chip(
+                              label: Text(sub),
+                              labelStyle: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11,
+                                color: AppColors.textSecondary,
+                              ),
+                              backgroundColor: const Color(0xFFF1F5F9),
+                              side: BorderSide.none,
+                              shape: const StadiumBorder(),
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -412,6 +553,7 @@ class CategoryGridData {
     this.onTap,
     this.progressLabel,
     this.amountColor,
+    this.subcategories = const <String>[],
   });
 
   final String title;
@@ -424,6 +566,7 @@ class CategoryGridData {
   final VoidCallback? onTap;
   final ValueChanged<bool> onToggle;
   final Color? amountColor;
+  final List<String> subcategories;
 }
 
 class _IconBadge extends StatelessWidget {

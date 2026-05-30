@@ -10,7 +10,9 @@ import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/utils/context_extensions.dart';
 import '../../../../core/utils/tag_parser.dart';
 import '../../../../routes/app_routes.dart';
+import '../../../../shared/widgets/app_page_header.dart';
 import '../../../../shared/widgets/app_filter_sheet.dart';
+import '../../../../shared/widgets/app_search_bar.dart';
 import 'package:xpens/features/accounts/accounts.dart';
 import '../../data/models/expense_model.dart';
 import '../provider/expense_providers.dart';
@@ -108,17 +110,8 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
     );
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        title: Text(
-          widget.autoFocusSearch ? 'Search' : 'Records',
-          style: const TextStyle(
-            color: AppColors.textDark,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
+      appBar: GradientAppBar(
+        title: widget.autoFocusSearch ? 'Search' : 'Records',
         actions: [
           // Sort button
           IconButton(
@@ -432,6 +425,9 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
       initialAccountId: expense.accountId,
       initialToAccountId: expense.toAccountId,
       initialType: expense.type,
+      initialSubcategory: expense.subcategory,
+      initialLatitude: expense.latitude,
+      initialLongitude: expense.longitude,
     );
   }
 
@@ -652,51 +648,12 @@ class _RecordsSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 16,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: TextField(
-        controller: controller,
-        focusNode: focusNode,
-        style: const TextStyle(
-          fontSize: 15,
-          color: AppColors.textDark,
-          fontWeight: FontWeight.w600,
-        ),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(
-            color: AppColors.textMuted,
-            fontWeight: FontWeight.w500,
-          ),
-          prefixIcon: const Icon(
-            Icons.search_rounded,
-            color: AppColors.primaryBlue,
-          ),
-          suffixIcon: hasText
-              ? IconButton(
-                  icon: const Icon(
-                    Icons.clear_rounded,
-                    color: AppColors.textMuted,
-                  ),
-                  onPressed: onClear,
-                )
-              : null,
-          border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
-        ),
-        onChanged: onChanged,
-      ),
+    return AppSearchBar(
+      controller: controller,
+      focusNode: focusNode,
+      hintText: hint,
+      onChanged: onChanged,
+      onClear: onClear,
     );
   }
 }

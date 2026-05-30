@@ -41,6 +41,9 @@ class ExpenseModel {
     this.accountId,
     this.toAccountId,
     this.type = TransactionType.expense,
+    this.subcategory,
+    this.latitude,
+    this.longitude,
   }) : date = date.toUtc() {
     if (id.isEmpty) {
       throw ArgumentError.value(id, 'id', 'Expense id cannot be empty.');
@@ -69,6 +72,9 @@ class ExpenseModel {
     String? accountId,
     String? toAccountId,
     TransactionType type = TransactionType.expense,
+    String? subcategory,
+    double? latitude,
+    double? longitude,
   }) {
     return ExpenseModel(
       id: const Uuid().v4(),
@@ -80,6 +86,9 @@ class ExpenseModel {
       toAccountId:
           toAccountId?.trim().isEmpty ?? true ? null : toAccountId?.trim(),
       type: type,
+      subcategory: subcategory?.trim().isEmpty ?? true ? null : subcategory?.trim(),
+      latitude: latitude,
+      longitude: longitude,
     );
   }
 
@@ -93,6 +102,9 @@ class ExpenseModel {
   /// Destination account for [TransactionType.transfer] records.
   final String? toAccountId;
   final TransactionType type;
+  final String? subcategory;
+  final double? latitude;
+  final double? longitude;
 
   bool get isIncome => type == TransactionType.income;
 
@@ -117,6 +129,12 @@ class ExpenseModel {
     String? toAccountId,
     bool clearToAccountId = false,
     TransactionType? type,
+    String? subcategory,
+    bool clearSubcategory = false,
+    double? latitude,
+    bool clearLatitude = false,
+    double? longitude,
+    bool clearLongitude = false,
   }) {
     return ExpenseModel(
       id: id ?? this.id,
@@ -127,6 +145,9 @@ class ExpenseModel {
       accountId: clearAccountId ? null : accountId ?? this.accountId,
       toAccountId: clearToAccountId ? null : toAccountId ?? this.toAccountId,
       type: type ?? this.type,
+      subcategory: clearSubcategory ? null : subcategory ?? this.subcategory,
+      latitude: clearLatitude ? null : latitude ?? this.latitude,
+      longitude: clearLongitude ? null : longitude ?? this.longitude,
     );
   }
 }
@@ -187,6 +208,33 @@ class ExpenseModelAdapter extends TypeAdapter<ExpenseModel> {
       toAccountId = null;
     }
 
+    String? subcategory;
+    try {
+      final stored = reader.readString();
+      subcategory = stored.isEmpty ? null : stored;
+    } catch (_) {
+      subcategory = null;
+    }
+
+    bool hasLocation = false;
+    try {
+      hasLocation = reader.readBool();
+    } catch (_) {
+      hasLocation = false;
+    }
+
+    double? latitude;
+    double? longitude;
+    if (hasLocation) {
+      try {
+        latitude = reader.readDouble();
+        longitude = reader.readDouble();
+      } catch (_) {
+        latitude = null;
+        longitude = null;
+      }
+    }
+
     return ExpenseModel(
       id: id,
       amount: amount,
@@ -196,11 +244,15 @@ class ExpenseModelAdapter extends TypeAdapter<ExpenseModel> {
       accountId: accountId,
       toAccountId: toAccountId,
       type: type,
+      subcategory: subcategory,
+      latitude: latitude,
+      longitude: longitude,
     );
   }
 
   @override
   void write(BinaryWriter writer, ExpenseModel obj) {
+    final hasLocation = obj.latitude != null && obj.longitude != null;
     writer
       ..writeString(obj.id)
       ..writeDouble(obj.amount)
@@ -209,6 +261,14 @@ class ExpenseModelAdapter extends TypeAdapter<ExpenseModel> {
       ..writeString(obj.note)
       ..writeString(obj.accountId ?? '')
       ..writeString(obj.type.storageValue)
-      ..writeString(obj.toAccountId ?? '');
+      ..writeString(obj.toAccountId ?? '')
+      ..writeString(obj.subcategory ?? '')
+      ..writeBool(hasLocation);
+
+    if (hasLocation) {
+      writer
+        ..writeDouble(obj.latitude!)
+        ..writeDouble(obj.longitude!);
+    }
   }
 }

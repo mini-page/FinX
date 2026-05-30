@@ -127,3 +127,87 @@ class AppPageHeader extends StatelessWidget {
     );
   }
 }
+
+class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
+  const GradientAppBar({
+    super.key,
+    required this.title,
+    this.showBackButton = true,
+    this.actions,
+    this.bottom,
+  });
+
+  final dynamic title; // Can be String or Widget
+  final bool showBackButton;
+  final List<Widget>? actions;
+  final PreferredSizeWidget? bottom;
+
+  @override
+  Size get preferredSize => Size.fromHeight(
+        kToolbarHeight + (bottom?.preferredSize.height ?? 0.0),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      centerTitle: true,
+      flexibleSpace: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFFEDE9FE), // Soft Lavender/Purple
+              Color(0xFFFAF5FF), // Lighter Purple
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+      ),
+      leading: showBackButton
+          ? Center(
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.chevron_left_rounded,
+                    color: AppColors.textDark,
+                    size: 22,
+                  ),
+                ),
+              ),
+            )
+          : null,
+      title: title is Widget
+          ? title as Widget
+          : Text(
+              title as String,
+              style: const TextStyle(
+                color: AppColors.textDark,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
+              ),
+            ),
+      actions: actions,
+      bottom: bottom,
+    );
+  }
+}
+

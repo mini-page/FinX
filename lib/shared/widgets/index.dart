@@ -6,3 +6,4 @@ export 'app_tab_switcher.dart';
 export 'app_toggle_switch.dart';
 export 'floating_nav_bar.dart';
 export 'placeholder_screen.dart';
+export 'currency_selector_sheet.dart';

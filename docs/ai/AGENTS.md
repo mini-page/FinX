@@ -28,6 +28,8 @@ UI -> Provider -> Repository -> DataSource -> Hive
 - Hive access is allowed only through datasource classes.
 - Providers control all state mutations.
 - All persisted data originates from the `Expense` model.
+- Always import model files directly (e.g. `import 'package:xpens/features/accounts/data/models/account_model.dart';`) when referencing custom model types inside subviews, to prevent missing type errors.
+- Always declare accessed lists or provider outputs (e.g. `final accounts = ref.read(accountListProvider).value ?? [];`) locally inside nested builders (like `StatefulBuilder` or list cell builders), to avoid out-of-scope compiler warnings.
 
 ## 3. Current Scope (MVP Only)
 

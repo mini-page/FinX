@@ -222,6 +222,36 @@ final allIncomeCategoriesProvider = Provider<List<ExpenseCategory>>((ref) {
   ];
 });
 
+final categorySubcategoriesProvider = Provider<Map<String, List<String>>>((ref) {
+  final json = ref.watch(appPreferencesProvider).value?.categorySubcategoriesJson ?? '';
+  if (json.isEmpty) {
+    return const {
+      'Food & Dining': ['breakfast', 'lunch', 'dinner', 'coffee', 'tea', 'snacks', 'cold drink'],
+      'Transportation': ['bus', 'train', 'ola', 'uber'],
+      'Shopping': ['clothes', 'electronics', 'groceries', 'gifts', 'shoes'],
+      'Beauty & Care': ['haircut', 'cosmetics', 'skincare', 'spa'],
+      'Social': ['drinks', 'movies', 'party', 'restaurant'],
+      'Travel': ['flight', 'hotel', 'sightseeing', 'taxi'],
+      'Accessories': ['watch', 'jewelry', 'bag'],
+      'Other': ['misc'],
+      'Salary': ['monthly', 'bonus', 'freelance'],
+      'Award': ['cash prize', 'certificate'],
+      'Coupon': ['discount', 'gift card'],
+      'Grant': ['scholarship', 'subsidy'],
+      'Lottery': ['jackpot', 'scratch card'],
+    };
+  }
+  try {
+    final parsed = jsonDecode(json) as Map<String, dynamic>;
+    return parsed.map((key, value) {
+      final list = (value as List<dynamic>).map((e) => e.toString()).toList();
+      return MapEntry(key, list);
+    });
+  } catch (_) {
+    return const {};
+  }
+});
+
 final isOnboardingCompletedProvider = Provider<bool>((ref) {
   return ref.watch(appPreferencesProvider).value?.isOnboardingCompleted ??
       AppPreferencesModel.defaults.isOnboardingCompleted;
@@ -734,5 +764,75 @@ class AppPreferencesController {
     await _ref
         .read(appPreferencesProvider.notifier)
         .save(_current.copyWith(aiSmsAiEnabled: enabled));
+  }
+
+  Future<void> addSubcategory(String categoryName, String subcategory) async {
+    final rawJson = _current.categorySubcategoriesJson;
+    Map<String, List<String>> map = {};
+    if (rawJson.isEmpty) {
+      map = {
+        'Food & Dining': ['breakfast', 'lunch', 'dinner', 'coffee', 'tea', 'snacks', 'cold drink'],
+        'Transportation': ['bus', 'train', 'ola', 'uber'],
+        'Shopping': ['clothes', 'electronics', 'groceries', 'gifts', 'shoes'],
+        'Beauty & Care': ['haircut', 'cosmetics', 'skincare', 'spa'],
+        'Social': ['drinks', 'movies', 'party', 'restaurant'],
+        'Travel': ['flight', 'hotel', 'sightseeing', 'taxi'],
+        'Accessories': ['watch', 'jewelry', 'bag'],
+        'Other': ['misc'],
+        'Salary': ['monthly', 'bonus', 'freelance'],
+        'Award': ['cash prize', 'certificate'],
+        'Coupon': ['discount', 'gift card'],
+        'Grant': ['scholarship', 'subsidy'],
+        'Lottery': ['jackpot', 'scratch card'],
+      };
+    } else {
+      try {
+        final parsed = jsonDecode(rawJson) as Map<String, dynamic>;
+        map = parsed.map((key, value) {
+          final list = (value as List<dynamic>).map((e) => e.toString()).toList();
+          return MapEntry(key, list);
+        });
+      } catch (_) {
+        map = {};
+      }
+    }
+
+    final list = map[categoryName] ?? [];
+    final clean = subcategory.trim();
+    if (clean.isNotEmpty && !list.contains(clean)) {
+      final newList = List<String>.from(list)..add(clean);
+      final newMap = Map<String, List<String>>.from(map)..[categoryName] = newList;
+      await _ref.read(appPreferencesProvider.notifier).save(
+            _current.copyWith(
+              categorySubcategoriesJson: jsonEncode(newMap),
+            ),
+          );
+    }
+  }
+
+  Future<void> removeSubcategory(String categoryName, String subcategory) async {
+    final rawJson = _current.categorySubcategoriesJson;
+    Map<String, List<String>> map = {};
+    if (rawJson.isNotEmpty) {
+      try {
+        final parsed = jsonDecode(rawJson) as Map<String, dynamic>;
+        map = parsed.map((key, value) {
+          final list = (value as List<dynamic>).map((e) => e.toString()).toList();
+          return MapEntry(key, list);
+        });
+      } catch (_) {
+        map = {};
+      }
+    }
+    final list = map[categoryName];
+    if (list != null && list.contains(subcategory)) {
+      final newList = List<String>.from(list)..remove(subcategory);
+      final newMap = Map<String, List<String>>.from(map)..[categoryName] = newList;
+      await _ref.read(appPreferencesProvider.notifier).save(
+            _current.copyWith(
+              categorySubcategoriesJson: jsonEncode(newMap),
+            ),
+          );
+    }
   }
 }

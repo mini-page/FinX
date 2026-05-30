@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -18,6 +20,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:xpens/features/sms_parser/domain/sms_parser_engine.dart';
 import 'package:xpens/routes/app_routes.dart';
 import 'voice_entry_screen.dart';
+import 'package:xpens/features/tags/tags.dart';
+import '../../../../shared/widgets/currency_selector_sheet.dart';
+import '../../../../shared/widgets/app_search_bar.dart';
 
 class AddExpenseScreen extends ConsumerStatefulWidget {
   const AddExpenseScreen({
@@ -31,6 +36,9 @@ class AddExpenseScreen extends ConsumerStatefulWidget {
     this.initialToAccountId,
     this.initialType = TransactionType.expense,
     this.payUpiUri,
+    this.initialSubcategory,
+    this.initialLatitude,
+    this.initialLongitude,
   });
 
   final String? expenseId;
@@ -41,6 +49,9 @@ class AddExpenseScreen extends ConsumerStatefulWidget {
   final String? initialAccountId;
   final String? initialToAccountId;
   final TransactionType initialType;
+  final String? initialSubcategory;
+  final double? initialLatitude;
+  final double? initialLongitude;
 
   /// When non-null the screen starts in "Pay via UPI" mode.
   ///
@@ -75,15 +86,20 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
   String? _selectedAccountId;
   String? _toAccountId;
   late bool _hasExplicitAccountChoice;
+  String? _selectedSubcategory;
   bool _isSaving = false;
 
   // Custom visual state variables for the redesigned layout
   bool _showCalculator = false;
   String? _activePreviewChip;
   bool _locationEnabled = false;
+  double? _latitude;
+  double? _longitude;
+  bool _isFetchingLocation = false;
   String? _attachedFilePath;
   String? _attachedImagePath;
   late String _selectedCurrency;
+  bool _shorthandExpandedFlash = false;
 
   // Visual tips timer variables
   final List<String> _tips = [
@@ -151,6 +167,10 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
     _toAccountId = widget.initialToAccountId;
     _hasExplicitAccountChoice =
         widget.initialAccountId != null || widget.isEditing;
+    _selectedSubcategory = widget.initialSubcategory;
+    _locationEnabled = widget.initialLatitude != null && widget.initialLongitude != null;
+    _latitude = widget.initialLatitude;
+    _longitude = widget.initialLongitude;
     _noteController = TextEditingController(text: widget.initialNote ?? '')
       ..addListener(_onNoteControllerChanged);
     _noteFocusNode = FocusNode()..addListener(_handleNoteFocusChanged);
@@ -165,6 +185,95 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
     });
   }
 
+  void _applyTagShorthand(TagShorthandModel tag) {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _shorthandExpandedFlash = true;
+    });
+    Timer(const Duration(milliseconds: 600), () {
+      if (mounted) {
+        setState(() {
+          _shorthandExpandedFlash = false;
+        });
+      }
+    });
+
+    setState(() {
+      if (tag.amount != null && tag.amount! > 0) {
+        _amountExpression = formatAmountExpressionValue(tag.amount!);
+        _amountController.text = _amountExpression;
+      }
+      if (tag.accountId != null) {
+        _selectedAccountId = tag.accountId;
+        _hasExplicitAccountChoice = true;
+      }
+      if (tag.categoryName != null) {
+        final allExpense = ref.read(allExpenseCategoriesProvider);
+        final isExpenseCategory = allExpense.any((c) => c.name == tag.categoryName);
+        if (isExpenseCategory) {
+          _selectedType = TransactionType.expense;
+          _selectedExpenseCategory = tag.categoryName!;
+        } else {
+          final allIncome = ref.read(allIncomeCategoriesProvider);
+          final isIncomeCategory = allIncome.any((c) => c.name == tag.categoryName);
+          if (isIncomeCategory) {
+            _selectedType = TransactionType.income;
+            _selectedIncomeCategory = tag.categoryName!;
+          } else {
+            _selectedType = TransactionType.expense;
+            _selectedExpenseCategory = tag.categoryName!;
+          }
+        }
+      }
+      if (tag.subcategoryName != null) {
+        _selectedSubcategory = tag.subcategoryName;
+      }
+      if (tag.note != null && tag.note!.isNotEmpty) {
+        _noteController.text = tag.note!;
+        _noteController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _noteController.text.length),
+        );
+      }
+    });
+  }
+
+  List<TagShorthandModel> _getMatchingShorthands() {
+    final text = _noteController.text;
+    if (!text.contains('?')) return const [];
+    
+    // Find the last segment starting with '?'
+    final parts = text.split(RegExp(r'\s+'));
+    final lastPart = parts.isNotEmpty ? parts.last : '';
+    if (!lastPart.startsWith('?')) return const [];
+    
+    final query = lastPart.substring(1).toLowerCase();
+    final allShorthands = ref.read(tagShorthandControllerProvider);
+    
+    if (query.isEmpty) {
+      return allShorthands;
+    }
+    
+    return allShorthands.where((tag) => tag.name.toLowerCase().contains(query)).toList();
+  }
+
+  void _selectShorthandSuggestion(TagShorthandModel tag) {
+    final text = _noteController.text;
+    final parts = text.split(RegExp(r'\s+'));
+    if (parts.isNotEmpty) {
+      final lastPart = parts.last;
+      if (lastPart.startsWith('?')) {
+        final textBeforeHash = text.substring(0, text.lastIndexOf(lastPart)).trim();
+        _applyTagShorthand(tag);
+        if (tag.note == null || tag.note!.isEmpty) {
+          _noteController.text = textBeforeHash;
+          _noteController.selection = TextSelection.fromPosition(
+            TextPosition(offset: _noteController.text.length),
+          );
+        }
+      }
+    }
+  }
+
   void _onNoteControllerChanged() {
     final text = _noteController.text;
     if (text.isEmpty) {
@@ -177,21 +286,44 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
           });
         }
       });
+      setState(() {});
       return;
     }
     _tipsTimer.cancel();
+
+    // Check tag shorthands for auto-expansion
+    final shorthands = ref.read(tagShorthandControllerProvider);
+    for (final tag in shorthands) {
+      final trigger = '?${tag.name}';
+      if (text.endsWith('$trigger ') || text == trigger) {
+        final cleanText = text.substring(0, text.length - trigger.length).trim();
+        _applyTagShorthand(tag);
+        if (tag.note == null || tag.note!.isEmpty) {
+          _noteController.text = cleanText;
+          _noteController.selection = TextSelection.fromPosition(
+            TextPosition(offset: _noteController.text.length),
+          );
+        }
+        break;
+      }
+    }
+
     if (text.endsWith('@')) {
       setState(() => _activePreviewChip = 'Account');
-    } else if (text.endsWith('/') || text.endsWith('?')) {
+    } else if (text.endsWith('/')) {
       setState(() => _activePreviewChip = 'Category');
-    } else if (text.endsWith('#')) {
+    } else if (text.endsWith('?')) {
       setState(() => _activePreviewChip = 'Tags');
     } else if (text.endsWith('+')) {
       setState(() => _activePreviewChip = 'Split');
     } else if (text.endsWith('!')) {
       setState(() => _activePreviewChip = 'Recurring');
+    } else {
+      setState(() {});
     }
   }
+
+
 
   void _parseUnifiedQuery(
     String query, {
@@ -360,6 +492,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
     final disabledAccountIds = ref.watch(disabledAccountIdsProvider);
     final allExpenseCategories = ref.watch(allExpenseCategoriesProvider);
     final allIncomeCategories = ref.watch(allIncomeCategoriesProvider);
+    final subcategoriesMap = ref.watch(categorySubcategoriesProvider);
     final availableExpenseCategories = allExpenseCategories
         .where((category) => !disabledExpenseCategories.contains(category.name))
         .toList(growable: false);
@@ -455,16 +588,27 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
                     const SizedBox(height: 20),
 
                     // Premium Unified Input Card
-                    Container(
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _shorthandExpandedFlash 
+                            ? AppColors.primaryBlue.withValues(alpha: 0.05) 
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                        boxShadow: const [
+                        border: Border.all(
+                          color: _shorthandExpandedFlash 
+                              ? AppColors.primaryBlue 
+                              : const Color(0xFFE2E8F0),
+                          width: _shorthandExpandedFlash ? 1.5 : 1.0,
+                        ),
+                        boxShadow: [
                           BoxShadow(
-                            color: Color(0x0A000000),
-                            blurRadius: 16,
-                            offset: Offset(0, 4),
+                            color: _shorthandExpandedFlash
+                                ? AppColors.primaryBlue.withValues(alpha: 0.1)
+                                : const Color(0x0A000000),
+                            blurRadius: _shorthandExpandedFlash ? 20 : 16,
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
@@ -568,6 +712,37 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              if (_noteFocusNode.hasFocus && _getMatchingShorthands().isNotEmpty) ...[
+                                SizedBox(
+                                  height: 38,
+                                  child: ListView(
+                                    scrollDirection: Axis.horizontal,
+                                    children: _getMatchingShorthands().map((tag) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(right: 8.0),
+                                        child: ActionChip(
+                                          label: Text('?${tag.name}'),
+                                          labelStyle: const TextStyle(
+                                            color: Color(0xFF475569),
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 12,
+                                          ),
+                                          backgroundColor: const Color(0xFFF1F5F9),
+                                          shape: const StadiumBorder(
+                                            side: BorderSide(color: Color(0xFFE2E8F0)),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                          onPressed: () {
+                                            HapticFeedback.lightImpact();
+                                            _selectShorthandSuggestion(tag);
+                                          },
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
                               TextField(
                                 controller: _noteController,
                                 focusNode: _noteFocusNode,
@@ -584,6 +759,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
                                   isDense: true,
                                 ),
                               ),
+                              _buildAttachmentPreviewCard(),
                             ],
                           ),
                           const Divider(height: 24, thickness: 1, color: Color(0xFFEDF2F7)),
@@ -622,7 +798,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
                       if (_activePreviewChip == 'Account')
                         _buildAccountPreview(selectionAccounts),
                       if (_activePreviewChip == 'Category')
-                        _buildCategoryPreview(availableExpenseCategories, availableIncomeCategories),
+                        _buildCategoryPreview(availableExpenseCategories, availableIncomeCategories, subcategoriesMap),
                       if (_activePreviewChip == 'Tags')
                         _buildTagsPreview(),
                       if (_activePreviewChip == 'Split')
@@ -738,13 +914,16 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
   }
 
   Widget _buildCurrencySwitcher() {
-    return PopupMenuButton<String>(
-      initialValue: _selectedCurrency,
-      onSelected: (val) {
-        setState(() {
-          _selectedCurrency = val;
-        });
+    return InkWell(
+      onTap: () async {
+        final selected = await showCurrencySelectorSheet(context, _selectedCurrency);
+        if (selected != null) {
+          setState(() {
+            _selectedCurrency = selected;
+          });
+        }
       },
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
@@ -771,15 +950,6 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
           ],
         ),
       ),
-      itemBuilder: (context) {
-        return <PopupMenuEntry<String>>[
-          const PopupMenuItem<String>(value: '₹', child: Text('₹')),
-          const PopupMenuItem<String>(value: '\$', child: Text('\$')),
-          const PopupMenuItem<String>(value: '€', child: Text('€')),
-          const PopupMenuItem<String>(value: '£', child: Text('£')),
-          const PopupMenuItem<String>(value: '¥', child: Text('¥')),
-        ];
-      },
     );
   }
 
@@ -863,9 +1033,17 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
 
   Widget _buildLocationChip() {
     final isSelected = _locationEnabled;
+    final isFetching = _isFetchingLocation;
     const accentColor = AppColors.primaryBlue;
     const disabledBg = Color(0xFFF4F6FA);
     const disabledText = AppColors.textMuted;
+
+    String labelText = 'Location';
+    if (isFetching) {
+      labelText = 'Fetching...';
+    } else if (isSelected && _latitude != null && _longitude != null) {
+      labelText = '${_latitude!.toStringAsFixed(2)}, ${_longitude!.toStringAsFixed(2)}';
+    }
 
     return Padding(
       padding: const EdgeInsets.only(right: 8.0),
@@ -873,25 +1051,32 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
         color: isSelected ? accentColor : disabledBg,
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
-          onTap: () {
-            setState(() {
-              _locationEnabled = !_locationEnabled;
-            });
-          },
+          onTap: isFetching ? null : _toggleLocation,
           borderRadius: BorderRadius.circular(20),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  isSelected ? Icons.location_on : Icons.location_on_outlined,
-                  size: 16,
-                  color: isSelected ? Colors.white : disabledText,
-                ),
+                if (isFetching) ...[
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.0,
+                      valueColor: AlwaysStoppedAnimation<Color>(disabledText),
+                    ),
+                  ),
+                ] else ...[
+                  Icon(
+                    isSelected ? Icons.location_on : Icons.location_on_outlined,
+                    size: 16,
+                    color: isSelected ? Colors.white : disabledText,
+                  ),
+                ],
                 const SizedBox(width: 6),
                 Text(
-                  'Location',
+                  labelText,
                   style: TextStyle(
                     color: isSelected ? Colors.white : disabledText,
                     fontWeight: FontWeight.w800,
@@ -906,39 +1091,94 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
     );
   }
 
-  void _showTipsDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.lightbulb_rounded, color: Colors.orangeAccent),
-            SizedBox(width: 8),
-            Text('Quick Tips'),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('You can type command symbols in the note field to quickly select fields:'),
-            SizedBox(height: 12),
-            Text('• @ = Account'),
-            Text('• / = Category'),
-            Text('• # = Tags'),
-            Text('• + = Split'),
-            Text('• ! = Recurring'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Got it'),
+  Future<void> _toggleLocation() async {
+    if (_locationEnabled) {
+      setState(() {
+        _locationEnabled = false;
+        _latitude = null;
+        _longitude = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isFetchingLocation = true;
+    });
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location services are disabled. Please enable location services.'),
           ),
-        ],
-      ),
-    );
+        );
+        setState(() {
+          _isFetchingLocation = false;
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permissions are denied.')),
+          );
+          setState(() {
+            _isFetchingLocation = false;
+          });
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location permissions are permanently denied. Please enable them in system settings.'),
+          ),
+        );
+        setState(() {
+          _isFetchingLocation = false;
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 8),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _locationEnabled = true;
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        _isFetchingLocation = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Location acquired: ${_latitude!.toStringAsFixed(4)}, ${_longitude!.toStringAsFixed(4)}'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isFetchingLocation = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to fetch location: $e')),
+      );
+    }
   }
+
+
 
   Future<void> _pickUnifiedDateTime() async {
     final pickedDate = await showDatePicker(
@@ -990,6 +1230,162 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
                 color: AppColors.primaryBlue,
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttachmentPreviewCard() {
+    if (_attachedImagePath == null && _attachedFilePath == null) {
+      return const SizedBox.shrink();
+    }
+
+    final hasImage = _attachedImagePath != null;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 8),
+      height: 120,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          children: [
+            if (hasImage)
+              Image.file(
+                File(_attachedImagePath!),
+                width: double.infinity,
+                height: double.infinity,
+                fit: BoxFit.cover,
+              )
+            else
+              Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.description_rounded, size: 36, color: AppColors.primaryBlue),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _attachedFilePath ?? 'Document File',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textDark,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            
+            // Subtle black overlay on the image for visibility
+            if (hasImage)
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.2),
+                      Colors.black.withOpacity(0.5),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Left overlay actions (Edit, Delete)
+            Positioned(
+              left: 12,
+              bottom: 12,
+              child: Row(
+                children: [
+                  // Edit Button
+                  GestureDetector(
+                    onTap: _showAttachmentOptions,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: const Icon(
+                        Icons.edit_rounded,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Delete Button
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _attachedImagePath = null;
+                        _attachedFilePath = null;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withOpacity(0.8),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: const Icon(
+                        Icons.delete_outline_rounded,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Right overlay actions (Fullscreen view)
+            Positioned(
+              right: 12,
+              bottom: 12,
+              child: GestureDetector(
+                onTap: _showAttachmentPreview,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(
+                        Icons.open_in_full_rounded,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        'View',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
@@ -1205,8 +1601,32 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
             height: 48,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: availableAccounts.length,
+              itemCount: availableAccounts.length + 1,
               itemBuilder: (context, idx) {
+                if (idx == availableAccounts.length) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: ActionChip(
+                      label: const Text('🔍 Search & Select'),
+                      avatar: const Icon(
+                        Icons.search,
+                        size: 16,
+                        color: AppColors.primaryBlue,
+                      ),
+                      labelStyle: const TextStyle(
+                        color: AppColors.primaryBlue,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                      backgroundColor: Colors.white,
+                      shape: const StadiumBorder(),
+                      side: const BorderSide(color: AppColors.primaryBlue),
+                      onPressed: () {
+                        _showAccountSelectorSheet(context, availableAccounts);
+                      },
+                    ),
+                  );
+                }
                 final acc = availableAccounts[idx];
                 final isSelected = _selectedAccountId == acc.id;
                 return Padding(
@@ -1248,10 +1668,16 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
   Widget _buildCategoryPreview(
     List<ExpenseCategory> availableExpenseCategories,
     List<ExpenseCategory> availableIncomeCategories,
+    Map<String, List<String>> subcategoriesMap,
   ) {
     final categories = _selectedType == TransactionType.income
         ? availableIncomeCategories
         : availableExpenseCategories;
+
+    final selectedCategory = _selectedType == TransactionType.income
+        ? _selectedIncomeCategory
+        : _selectedExpenseCategory;
+    final subcats = subcategoriesMap[selectedCategory] ?? const <String>[];
 
     if (categories.isEmpty) {
       return Container(
@@ -1299,8 +1725,32 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
             height: 48,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: categories.length,
+              itemCount: categories.length + 1,
               itemBuilder: (context, idx) {
+                if (idx == categories.length) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: ActionChip(
+                      label: const Text('🔍 Search & Select'),
+                      avatar: Icon(
+                        Icons.search,
+                        size: 16,
+                        color: activeColor,
+                      ),
+                      labelStyle: TextStyle(
+                        color: activeColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                      backgroundColor: Colors.white,
+                      shape: const StadiumBorder(),
+                      side: BorderSide(color: activeColor),
+                      onPressed: () {
+                        _showCategorySelectorSheet(context, availableExpenseCategories, availableIncomeCategories, subcategoriesMap);
+                      },
+                    ),
+                  );
+                }
                 final cat = categories[idx];
                 final isSelected = _selectedType == TransactionType.income
                     ? _selectedIncomeCategory == cat.name
@@ -1331,6 +1781,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
                           } else {
                             _selectedExpenseCategory = cat.name;
                           }
+                          _selectedSubcategory = null;
                         }
                       });
                     },
@@ -1339,6 +1790,63 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
               },
             ),
           ),
+          if (subcats.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Divider(color: Color(0xFFE2E8F0), height: 1),
+            const SizedBox(height: 12),
+            Text(
+              'Select $selectedCategory Items',
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 36,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: subcats.length,
+                itemBuilder: (context, idx) {
+                  final sub = subcats[idx];
+                  final isSelected = _selectedSubcategory == sub;
+
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: FilterChip(
+                      label: Text(sub),
+                      selected: isSelected,
+                      labelStyle: TextStyle(
+                        color: isSelected ? Colors.white : AppColors.textDark,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                      ),
+                      selectedColor: activeColor,
+                      backgroundColor: Colors.white,
+                      checkmarkColor: Colors.white,
+                      showCheckmark: false,
+                      shape: StadiumBorder(
+                        side: BorderSide(
+                          color: isSelected ? Colors.transparent : const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      padding: EdgeInsets.zero,
+                      onSelected: (selected) {
+                        setState(() {
+                          if (selected) {
+                            _selectedSubcategory = sub;
+                          } else {
+                            _selectedSubcategory = null;
+                          }
+                        });
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1354,6 +1862,9 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
       'Work',
       'Personal'
     ];
+
+    final shorthands = ref.watch(tagShorthandControllerProvider);
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 12),
       padding: const EdgeInsets.all(16),
@@ -1365,13 +1876,77 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Popular Tags (Tap to add to notes)',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 14,
-              color: AppColors.textDark,
+          if (shorthands.isNotEmpty) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Custom Shorthands (Autofills details)',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => _showTagsSelectorSheet(context),
+                  icon: const Icon(Icons.search, size: 16),
+                  label: const Text('Search'),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: shorthands.map((tag) {
+                return ActionChip(
+                  label: Text('?${tag.name}'),
+                  labelStyle: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                    color: Color(0xFF475569),
+                  ),
+                  backgroundColor: const Color(0xFFF1F5F9),
+                  shape: const StadiumBorder(
+                    side: BorderSide(color: Color(0xFFE2E8F0)),
+                  ),
+                  onPressed: () => _applyTagShorthand(tag),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 20),
+            const Divider(color: Color(0xFFE2E8F0), height: 1),
+            const SizedBox(height: 16),
+          ],
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Popular Tags (Tap to add to notes)',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                  color: AppColors.textDark,
+                ),
+              ),
+              if (shorthands.isEmpty)
+                TextButton.icon(
+                  onPressed: () => _showTagsSelectorSheet(context),
+                  icon: const Icon(Icons.search, size: 16),
+                  label: const Text('Search'),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -1386,14 +1961,12 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
                   color: Color(0xFF7C3AED),
                 ),
                 backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: const BorderSide(color: Color(0xFFDDD6FE)),
-                ),
+                shape: const StadiumBorder(),
+                side: const BorderSide(color: Color(0xFFDDD6FE)),
                 onPressed: () {
                   final currentText = _noteController.text;
                   String cleanText = currentText;
-                  if (cleanText.endsWith('#')) {
+                  if (cleanText.endsWith('?')) {
                     cleanText = cleanText.substring(0, cleanText.length - 1);
                   }
                   setState(() {
@@ -1420,20 +1993,35 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Split Bill Settings',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 14,
-              color: AppColors.textDark,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Split Bill Settings',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                  color: AppColors.textDark,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () => _showSplitSelectorSheet(context),
+                icon: const Icon(Icons.edit_road_rounded, size: 16),
+                label: const Text('Configure'),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
           ),
-          SizedBox(height: 8),
-          Text(
-            'Split bill module will allow you to divide expenses between friends. Tap to configure groups.',
+          const SizedBox(height: 8),
+          const Text(
+            'Split bill module will allow you to divide expenses between friends. Tap Configure to edit splits.',
             style: TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.4),
           ),
         ],
@@ -2046,6 +2634,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
             accountId: selectedAccount?.id,
             toAccountId: toAccount?.id,
             type: TransactionType.transfer,
+            latitude: _locationEnabled ? _latitude : null,
+            longitude: _locationEnabled ? _longitude : null,
           );
         } else {
           await controller.addTransfer(
@@ -2054,6 +2644,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
             toAccountId: toAccount!.id,
             date: _selectedDate,
             note: _noteController.text,
+            latitude: _locationEnabled ? _latitude : null,
+            longitude: _locationEnabled ? _longitude : null,
           );
         }
       } else if (widget.isEditing) {
@@ -2067,6 +2659,9 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
           note: _noteController.text,
           accountId: selectedAccount?.id,
           type: _selectedType,
+          subcategory: _selectedSubcategory,
+          latitude: _locationEnabled ? _latitude : null,
+          longitude: _locationEnabled ? _longitude : null,
         );
       } else {
         await controller.addExpense(
@@ -2078,6 +2673,9 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
           note: _noteController.text,
           accountId: selectedAccount?.id,
           type: _selectedType,
+          subcategory: _selectedSubcategory,
+          latitude: _locationEnabled ? _latitude : null,
+          longitude: _locationEnabled ? _longitude : null,
         );
       }
 
@@ -2278,6 +2876,883 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
         ),
       );
     }
+  }
+
+  void _showAccountSelectorSheet(BuildContext context, List<AccountModel> accountsList) {
+    final currencyFormat = ref.read(currencyFormatProvider);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return _AccountSelectorSheetContent(
+          accountsList: accountsList,
+          selectedAccountId: _selectedAccountId,
+          currencyFormat: currencyFormat,
+          onSelected: (accId) {
+            setState(() {
+              _selectedAccountId = accId;
+              _hasExplicitAccountChoice = true;
+            });
+            Navigator.pop(ctx);
+          },
+        );
+      },
+    );
+  }
+
+  void _showCategorySelectorSheet(
+    BuildContext context,
+    List<ExpenseCategory> availableExpenseCategories,
+    List<ExpenseCategory> availableIncomeCategories,
+    Map<String, List<String>> subcategoriesMap,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return _CategorySelectorSheetContent(
+          expenseCategories: availableExpenseCategories,
+          incomeCategories: availableIncomeCategories,
+          subcategoriesMap: subcategoriesMap,
+          initialType: _selectedType,
+          selectedExpenseCategory: _selectedExpenseCategory,
+          selectedIncomeCategory: _selectedIncomeCategory,
+          selectedSubcategory: _selectedSubcategory,
+          onSelected: (type, category, subcategory) {
+            setState(() {
+              _selectedType = type;
+              if (type == TransactionType.income) {
+                _selectedIncomeCategory = category;
+              } else {
+                _selectedExpenseCategory = category;
+              }
+              _selectedSubcategory = subcategory;
+            });
+          },
+        );
+      },
+    );
+  }
+
+  void _showTagsSelectorSheet(BuildContext context) {
+    final shorthands = ref.read(tagShorthandControllerProvider);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return _TagsSelectorSheetContent(
+          shorthands: shorthands,
+          onSelectShorthand: (tag) {
+            _applyTagShorthand(tag);
+            Navigator.pop(ctx);
+          },
+          onSelectPopularTag: (tag) {
+            final currentText = _noteController.text;
+            String cleanText = currentText;
+            if (cleanText.endsWith('?')) {
+              cleanText = cleanText.substring(0, cleanText.length - 1);
+            }
+            setState(() {
+              _noteController.text = '$cleanText#$tag ';
+              _noteController.selection = TextSelection.fromPosition(
+                TextPosition(offset: _noteController.text.length),
+              );
+            });
+            Navigator.pop(ctx);
+          },
+        );
+      },
+    );
+  }
+
+  void _showSplitSelectorSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return _SplitSelectorSheetContent(
+          onConfigured: () {
+            HapticFeedback.lightImpact();
+          },
+        );
+      },
+    );
+  }
+}
+
+class _AccountSelectorSheetContent extends StatefulWidget {
+  const _AccountSelectorSheetContent({
+    required this.accountsList,
+    required this.selectedAccountId,
+    required this.onSelected,
+    required this.currencyFormat,
+  });
+
+  final List<AccountModel> accountsList;
+  final String? selectedAccountId;
+  final ValueChanged<String> onSelected;
+  final NumberFormat currencyFormat;
+
+  @override
+  State<_AccountSelectorSheetContent> createState() => _AccountSelectorSheetContentState();
+}
+
+class _AccountSelectorSheetContentState extends State<_AccountSelectorSheetContent> {
+  String _searchQuery = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+    final filtered = widget.accountsList.where((acc) {
+      return acc.name.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPadding + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE2E8F0),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Select Account',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.textDark),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Choose the account for this transaction.',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 16),
+          AppSearchBar(
+            onChanged: (val) {
+              setState(() {
+                _searchQuery = val;
+              });
+            },
+            onClear: () {
+              setState(() {
+                _searchQuery = '';
+              });
+            },
+            hintText: 'Search account...',
+            hasBorder: true,
+          ),
+          const SizedBox(height: 16),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.4,
+            ),
+            child: filtered.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24.0),
+                      child: Text(
+                        'No accounts found.',
+                        style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final acc = filtered[index];
+                      final isSelected = widget.selectedAccountId == acc.id;
+                      return GestureDetector(
+                        onTap: () => widget.onSelected(acc.id),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isSelected ? AppColors.primaryBlue.withOpacity(0.04) : Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSelected ? AppColors.primaryBlue : const Color(0xFFE2E8F0),
+                              width: isSelected ? 1.5 : 1.0,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: isSelected ? AppColors.primaryBlue.withOpacity(0.1) : const Color(0xFFF1F5F9),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  resolveAccountIcon(acc.iconKey),
+                                  color: isSelected ? AppColors.primaryBlue : AppColors.textDark,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      acc.name,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.textDark,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Balance: ${widget.currencyFormat.format(acc.balance)}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textMuted,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (isSelected)
+                                const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: AppColors.primaryBlue,
+                                  size: 20,
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CategorySelectorSheetContent extends StatefulWidget {
+  const _CategorySelectorSheetContent({
+    required this.expenseCategories,
+    required this.incomeCategories,
+    required this.subcategoriesMap,
+    required this.initialType,
+    required this.selectedExpenseCategory,
+    required this.selectedIncomeCategory,
+    required this.selectedSubcategory,
+    required this.onSelected,
+  });
+
+  final List<ExpenseCategory> expenseCategories;
+  final List<ExpenseCategory> incomeCategories;
+  final Map<String, List<String>> subcategoriesMap;
+  final TransactionType initialType;
+  final String selectedExpenseCategory;
+  final String selectedIncomeCategory;
+  final String? selectedSubcategory;
+  final Function(TransactionType type, String category, String? subcategory) onSelected;
+
+  @override
+  State<_CategorySelectorSheetContent> createState() => _CategorySelectorSheetContentState();
+}
+
+class _CategorySelectorSheetContentState extends State<_CategorySelectorSheetContent> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  String _searchQuery = '';
+  String? _tempSelectedCategory;
+  String? _tempSelectedSubcategory;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialType == TransactionType.income ? 1 : 0,
+    );
+    _tempSelectedCategory = widget.initialType == TransactionType.income
+        ? widget.selectedIncomeCategory
+        : widget.selectedExpenseCategory;
+    _tempSelectedSubcategory = widget.selectedSubcategory;
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+    
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPadding + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE2E8F0),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Select Category',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.textDark),
+          ),
+          const SizedBox(height: 16),
+          
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              indicator: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x0F000000),
+                    blurRadius: 4,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              labelColor: AppColors.textDark,
+              unselectedLabelColor: AppColors.textMuted,
+              labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+              unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              indicatorSize: TabBarIndicatorSize.tab,
+              dividerColor: Colors.transparent,
+              onTap: (index) {
+                setState(() {
+                  _tempSelectedCategory = null;
+                  _tempSelectedSubcategory = null;
+                });
+              },
+              tabs: const [
+                Tab(text: 'Expense'),
+                Tab(text: 'Income'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          AppSearchBar(
+            onChanged: (val) {
+              setState(() {
+                _searchQuery = val.trim().toLowerCase();
+              });
+            },
+            onClear: () {
+              setState(() {
+                _searchQuery = '';
+              });
+            },
+            hintText: 'Search categories...',
+            hasBorder: true,
+          ),
+          const SizedBox(height: 16),
+
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.45,
+            ),
+            child: AnimatedBuilder(
+              animation: _tabController,
+              builder: (context, _) {
+                final isIncome = _tabController.index == 1;
+                final categories = isIncome ? widget.incomeCategories : widget.expenseCategories;
+                
+                final filtered = categories.where((cat) {
+                  return cat.name.toLowerCase().contains(_searchQuery);
+                }).toList();
+
+                if (filtered.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24.0),
+                      child: Text(
+                        'No categories found.',
+                        style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  );
+                }
+
+                final activeColor = isIncome ? AppColors.success : const Color(0xFFC23358);
+
+                return ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, idx) {
+                    final cat = filtered[idx];
+                    final isSelectedCategory = _tempSelectedCategory == cat.name;
+                    final subcategories = widget.subcategoriesMap[cat.name] ?? const <String>[];
+
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      decoration: BoxDecoration(
+                        color: isSelectedCategory ? activeColor.withOpacity(0.04) : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isSelectedCategory ? activeColor : const Color(0xFFE2E8F0),
+                          width: isSelectedCategory ? 1.5 : 1.0,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListTile(
+                            leading: Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: cat.color.withOpacity(0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(cat.icon, color: cat.color, size: 18),
+                            ),
+                            title: Text(
+                              cat.name,
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: AppColors.textDark),
+                            ),
+                            trailing: isSelectedCategory
+                                ? Icon(Icons.check_circle_rounded, color: activeColor, size: 20)
+                                : const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+                            onTap: () {
+                              setState(() {
+                                _tempSelectedCategory = cat.name;
+                                _tempSelectedSubcategory = null;
+                              });
+                              if (subcategories.isEmpty) {
+                                widget.onSelected(
+                                  isIncome ? TransactionType.income : TransactionType.expense,
+                                  cat.name,
+                                  null,
+                                );
+                              }
+                            },
+                          ),
+                          
+                          if (isSelectedCategory && subcategories.isNotEmpty) ...[
+                            const Divider(color: Color(0xFFE2E8F0), height: 1),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Select Subcategory / Item (Optional)',
+                                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: AppColors.textSecondary),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      ...subcategories.map((sub) {
+                                        final isSubSelected = _tempSelectedSubcategory == sub;
+                                        return ChoiceChip(
+                                          label: Text(sub),
+                                          selected: isSubSelected,
+                                          labelStyle: TextStyle(
+                                            color: isSubSelected ? Colors.white : AppColors.textDark,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 11,
+                                          ),
+                                          selectedColor: activeColor,
+                                          backgroundColor: const Color(0xFFF1F5F9),
+                                          side: BorderSide.none,
+                                          shape: const StadiumBorder(),
+                                          showCheckmark: false,
+                                          onSelected: (selected) {
+                                            setState(() {
+                                              _tempSelectedSubcategory = selected ? sub : null;
+                                            });
+                                            widget.onSelected(
+                                              isIncome ? TransactionType.income : TransactionType.expense,
+                                              cat.name,
+                                              _tempSelectedSubcategory,
+                                            );
+                                          },
+                                        );
+                                      }),
+                                      
+                                      ChoiceChip(
+                                        label: const Text('None / Select Category Only'),
+                                        selected: false,
+                                        labelStyle: TextStyle(
+                                          color: activeColor,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 11,
+                                        ),
+                                        backgroundColor: activeColor.withOpacity(0.1),
+                                        side: BorderSide(color: activeColor.withOpacity(0.3)),
+                                        shape: const StadiumBorder(),
+                                        onSelected: (_) {
+                                          widget.onSelected(
+                                            isIncome ? TransactionType.income : TransactionType.expense,
+                                            cat.name,
+                                            null,
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TagsSelectorSheetContent extends StatefulWidget {
+  const _TagsSelectorSheetContent({
+    required this.shorthands,
+    required this.onSelectShorthand,
+    required this.onSelectPopularTag,
+  });
+
+  final List<TagShorthandModel> shorthands;
+  final ValueChanged<TagShorthandModel> onSelectShorthand;
+  final ValueChanged<String> onSelectPopularTag;
+
+  @override
+  State<_TagsSelectorSheetContent> createState() => _TagsSelectorSheetContentState();
+}
+
+class _TagsSelectorSheetContentState extends State<_TagsSelectorSheetContent> {
+  String _searchQuery = '';
+  final List<String> popularTags = [
+    'Food',
+    'Travel',
+    'Shopping',
+    'Bills',
+    'Entertainment',
+    'Work',
+    'Personal'
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+    
+    final filteredShorthands = widget.shorthands.where((tag) {
+      return tag.name.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+
+    final filteredPopular = popularTags.where((tag) {
+      return tag.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPadding + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE2E8F0),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Tags & Shorthands',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.textDark),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Autofill mapping details or append a tag to your note.',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 16),
+
+          AppSearchBar(
+            onChanged: (val) {
+              setState(() {
+                _searchQuery = val;
+              });
+            },
+            onClear: () {
+              setState(() {
+                _searchQuery = '';
+              });
+            },
+            hintText: 'Search tags or shorthands...',
+            hasBorder: true,
+          ),
+          const SizedBox(height: 16),
+
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.45,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (filteredShorthands.isNotEmpty) ...[
+                    const Text(
+                      'Custom Shorthands (Autofills details)',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppColors.textDark),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: filteredShorthands.map((tag) {
+                        return ActionChip(
+                          label: Text('?${tag.name}'),
+                          labelStyle: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                            color: Color(0xFF475569),
+                          ),
+                          backgroundColor: const Color(0xFFF1F5F9),
+                          shape: const StadiumBorder(
+                            side: BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          onPressed: () => widget.onSelectShorthand(tag),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 20),
+                    const Divider(color: Color(0xFFE2E8F0), height: 1),
+                    const SizedBox(height: 16),
+                  ],
+
+                  if (filteredPopular.isNotEmpty) ...[
+                    const Text(
+                      'Popular Tags (Appends to note)',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppColors.textDark),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: filteredPopular.map((tag) {
+                        return ActionChip(
+                          label: Text('#$tag'),
+                          labelStyle: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            color: Color(0xFF7C3AED),
+                          ),
+                          backgroundColor: Colors.white,
+                          shape: const StadiumBorder(),
+                          side: const BorderSide(color: Color(0xFFDDD6FE)),
+                          onPressed: () => widget.onSelectPopularTag(tag),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+
+                  if (filteredShorthands.isEmpty && filteredPopular.isEmpty)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24.0),
+                        child: Text(
+                          'No tags or shorthands found.',
+                          style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SplitSelectorSheetContent extends StatefulWidget {
+  const _SplitSelectorSheetContent({
+    required this.onConfigured,
+  });
+
+  final VoidCallback onConfigured;
+
+  @override
+  State<_SplitSelectorSheetContent> createState() => _SplitSelectorSheetContentState();
+}
+
+class _SplitSelectorSheetContentState extends State<_SplitSelectorSheetContent> {
+  int _membersCount = 2;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPadding + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE2E8F0),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Split Bill',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.textDark),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Divide this expense between group members or friends.',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 20),
+          
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Number of Members',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: AppColors.textDark),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline_rounded, color: AppColors.primaryBlue),
+                    onPressed: _membersCount > 2
+                        ? () {
+                            setState(() {
+                              _membersCount--;
+                            });
+                          }
+                        : null,
+                  ),
+                  Text(
+                    '$_membersCount',
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppColors.textDark),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.primaryBlue),
+                    onPressed: () {
+                      setState(() {
+                        _membersCount++;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.pie_chart_outline_rounded, color: Color(0xFFF97316), size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Each member will pay: 1/$_membersCount share',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              onPressed: () {
+                widget.onConfigured();
+                Navigator.pop(context);
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFF97316),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: const Text(
+                'Confirm Split',
+                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

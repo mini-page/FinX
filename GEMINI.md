@@ -40,6 +40,11 @@ Every feature directory must maintain its clean boundary. Consumers must import 
 - Run `flutter analyze` and resolve all lint issues.
 - Keep tests updated under `test/features/` to mirror the features layout.
 
+### 5. Compiler Error Prevention (Anti-Error Guidelines)
+- **Import Model Types Explicitly**: Under feature-first modular architecture, when referencing model types (e.g. `AccountModel`, `CategoryModel`, `ExpenseModel`, `TagModel`, `RecurringSubscriptionModel`) across feature-specific subviews, always import their source model file directly (e.g. `import 'package:xpens/features/accounts/data/models/account_model.dart';`), rather than relying on indirect barrel or provider imports.
+- **Declare Local State/Data Variables in Builder Scopes**: When nesting builders (such as `StatefulBuilder`, `ListView.builder`, or bottom sheet context builders) inside screen views, declare all required lists or provider values (e.g., `final accounts = ref.read(accountListProvider).value ?? [];`) locally within the builder's scope. Do not reference variables from out-of-scope widget trees without proper declarations.
+- **Sanity Checks**: Verify that all parameters, variables, and imports added during refactoring are complete and warning-free.
+
 ## Tooling & Command Directives
 
 ### 1. Modern Command-Line Alternatives

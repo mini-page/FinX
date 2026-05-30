@@ -265,20 +265,6 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen> {
                         ),
                       ),
                     ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pushReplacement(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const AppShell(),
-                      ),
-                    ),
-                    child: const Text(
-                      'Use Backup / Skip',
-                      style: TextStyle(
-                        color: AppColors.textMuted,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
                 ],
               ],
             ),
