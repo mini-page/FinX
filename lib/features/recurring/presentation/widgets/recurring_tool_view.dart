@@ -7,12 +7,13 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../data/models/recurring_subscription_model.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
+import '../../domain/recurrence_parser.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
 import '../provider/recurring_subscription_providers.dart';
 import 'subscription_editor_sheet.dart';
 import 'subscription_icons.dart';
-import 'package:xpens/features/expense/presentation/widgets/ui_feedback.dart';
-import 'package:xpens/features/expense/presentation/provider/expense_providers.dart';
+import 'package:expensio/features/expense/presentation/widgets/ui_feedback.dart';
+import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
 
 class RecurringToolView extends ConsumerStatefulWidget {
   const RecurringToolView({super.key});
@@ -31,16 +32,16 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
     final currency = ref.watch(currencyFormatProvider);
 
     double getMonthlyEquivalent(RecurringSubscriptionModel sub) {
-      switch (sub.billingPeriod.toLowerCase()) {
-        case 'weekly':
-          return sub.amount * 52 / 12;
-        case 'quarterly':
-          return sub.amount / 3;
-        case 'yearly':
-          return sub.amount / 12;
-        case 'monthly':
-        default:
-          return sub.amount;
+      final rec = sub.recurrence;
+      // Convert any recurrence to monthly equivalent
+      switch (rec.unit) {
+        case RecurrenceUnit.day:
+          // count days per period -> periods per year -> /12
+          return sub.amount * (365 / rec.count) / 12;
+        case RecurrenceUnit.week:
+          return sub.amount * (52 / rec.count) / 12;
+        case RecurrenceUnit.month:
+          return sub.amount / rec.count;
       }
     }
 
@@ -60,8 +61,10 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
 
     // Determine vertical list count based on expansion state
     final displayedSubscriptions = _showAll
-        ? subscriptions
-        : subscriptions.take(4).toList();
+        ? subscriptions.where((s) => !s.isExpired).toList()
+        : subscriptions.where((s) => !s.isExpired).take(4).toList();
+
+    final expiredSubs = subscriptions.where((s) => s.isExpired).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,7 +201,7 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
                                 width: 34,
                                 height: 34,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.08),
+                                  color: Colors.white.withValues(alpha: 0.08),
                                   shape: BoxShape.circle,
                                 ),
                                 alignment: Alignment.center,
@@ -339,6 +342,42 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
               );
             },
           ),
+          // ── Expired Subscriptions Section ─────────────────────────────────
+          if (expiredSubs.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Icon(Icons.info_outline_rounded,
+                    size: 16, color: AppColors.danger),
+                const SizedBox(width: 6),
+                Text(
+                  'Expired (${expiredSubs.length})',
+                  style: TextStyle(
+                    color: AppColors.danger,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: expiredSubs.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final sub = expiredSubs[index];
+                return _SubscriptionTile(
+                  subscription: sub,
+                  amountText: currency.format(sub.amount),
+                  onTap: () => _openEditor(context, subscription: sub),
+                  onDelete: () => _confirmDeleteSubscription(context, sub),
+                );
+              },
+            ),
+          ],
+
           const SizedBox(height: 20),
 
           // ── Bottom Summary Row ──────────────────────────────────────────────
@@ -408,6 +447,11 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
           note: result.note,
           isActive: result.isActive,
           billingPeriod: result.billingPeriod,
+          notifyDaysBefore: result.notifyDaysBefore,
+          lastPaymentDate: result.lastPaymentDate,
+          priceHistory: result.priceHistory,
+          cancellationNote: result.cancellationNote,
+          cancelledAt: result.cancelledAt,
         );
   }
 
@@ -497,28 +541,80 @@ class _SubscriptionTile extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      subscription.name,
-                      style: const TextStyle(
-                        color: AppColors.textDark,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              subscription.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.textDark,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          if (subscription.isPastDue && !subscription.isExpired)
+                            _StatusBadge(
+                              label: 'Due',
+                              color: AppColors.warning,
+                            ),
+                          if (subscription.isExpired)
+                            _StatusBadge(
+                              label: 'Expired',
+                              color: AppColors.danger,
+                            ),
+                          if (subscription.isPriceIncreased)
+                            _StatusBadge(
+                              label: '↑${subscription.previousAmount?.toStringAsFixed(0) ?? ''}',
+                              color: AppColors.warning,
+                            ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      DateFormat('MMM d, yyyy').format(subscription.nextBillDate),
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            DateFormat('MMM d, yyyy').format(subscription.nextBillDate),
+                            style: const TextStyle(
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                          if (subscription.lastPaymentDate != null) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              '• Paid ${DateFormat('d MMM').format(subscription.lastPaymentDate!)}',
+                              style: const TextStyle(
+                                color: AppColors.textMuted,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                    ),
-                  ],
-                ),
+                      if (!subscription.isActive &&
+                          subscription.cancellationNote != null &&
+                          subscription.cancellationNote!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Reason: ${subscription.cancellationNote}',
+                            style: TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 11,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -570,6 +666,32 @@ class _SubscriptionTile extends StatelessWidget {
   }
 }
 
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
 class _StateCard extends StatelessWidget {
   const _StateCard({required this.title, required this.message});
   final String title;
@@ -610,18 +732,22 @@ class _StateCard extends StatelessWidget {
   }
 }
 
+/// Returns a short display label for a billing period string.
+/// Supports both legacy ("monthly", "weekly") and encoded ("2:week") formats.
 String _getBillingPeriodLabel(String period) {
-  switch (period.toLowerCase()) {
-    case 'weekly':
-      return '/ wk';
-    case 'quarterly':
-      return '/ qtr';
-    case 'yearly':
-      return '/ yr';
-    case 'monthly':
-    default:
-      return '/ mo';
+  final rec = decodeRecurrence(period);
+  if (rec.count == 1) {
+    return switch (rec.unit) {
+      RecurrenceUnit.day => '/ day',
+      RecurrenceUnit.week => '/ wk',
+      RecurrenceUnit.month => '/ mo',
+    };
   }
+  return switch (rec.unit) {
+    RecurrenceUnit.day => '/${rec.count}d',
+    RecurrenceUnit.week => '/${rec.count}wk',
+    RecurrenceUnit.month => '/${rec.count}mo',
+  };
 }
 
 Future<void> _logSubscriptionPayment(
@@ -630,28 +756,36 @@ Future<void> _logSubscriptionPayment(
   RecurringSubscriptionModel sub,
 ) async {
   HapticFeedback.mediumImpact();
+  final now = DateTime.now();
   
   // 1. Add real expense transaction
   await ref.read(expenseControllerProvider).addExpense(
         amount: sub.amount,
         category: 'Bills',
-        date: DateTime.now(),
+        date: now,
         note: '${sub.name} Subscription Payment',
       );
 
   // 2. Advance the next bill date
   final nextBill = sub.calculateNextBillDate(sub.nextBillDate);
 
-  // 3. Save changes to subscription
+  // 3. Record payment on subscription
+  final updated = sub.recordPayment(now).copyWith(nextBillDate: nextBill);
+
   await ref.read(recurringSubscriptionControllerProvider).saveSubscription(
-        id: sub.id,
-        name: sub.name,
-        amount: sub.amount,
-        nextBillDate: nextBill,
-        iconKey: sub.iconKey,
-        note: sub.note,
-        isActive: sub.isActive,
-        billingPeriod: sub.billingPeriod,
+        id: updated.id,
+        name: updated.name,
+        amount: updated.amount,
+        nextBillDate: updated.nextBillDate,
+        iconKey: updated.iconKey,
+        note: updated.note,
+        isActive: updated.isActive,
+        billingPeriod: updated.billingPeriod,
+        lastPaymentDate: updated.lastPaymentDate,
+        priceHistory: updated.priceHistory,
+        notifyDaysBefore: updated.notifyDaysBefore,
+        cancellationNote: updated.cancellationNote,
+        cancelledAt: updated.cancelledAt,
       );
 
   if (context.mounted) {

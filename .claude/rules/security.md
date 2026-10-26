@@ -14,7 +14,7 @@
 
 ## Logging
 
-- Never log expense amounts, account names, or user notes — even at `debug` level.
+- Never log Expense amounts, account names, or user notes — even at `debug` level.
 - `dev.log` is acceptable for structural/flow information (e.g., "Hive box opened").
 - Strip all debug logs in release builds (handled by `dart:developer` — logs are no-ops in release mode).
 

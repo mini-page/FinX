@@ -1,16 +1,19 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../../../../core/services/ai_product_service.dart';
+
+import '../../../../core/ai/ai_model_providers.dart';
+import '../../../../core/ai/ai_result.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../routes/app_routes.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
+import '../../../../shared/widgets/app_back_button.dart';
 
 /// A unified scan-and-log screen combining two modes in a single camera view.
 ///
@@ -57,12 +60,16 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
 
   late int _tabIndex;
   bool _billProcessed = false;
+  bool _upiProcessed = false;
+  bool _isPickingUpi = false;
 
   // AI tab state
   String? _capturedImagePath;
   bool _isCapturing = false;
   bool _isPicking = false;
   bool _isProcessing = false;
+  final GlobalKey _previewKey = GlobalKey();
+  bool _showShutterFlash = false;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -87,7 +94,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
       curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
     );
 
-    if (_tabIndex == 1) {
+    if (_tabIndex == 2) {
       // Start AI camera instead of bill camera when launched on AI tab.
       _billController.stop();
       _aiController.start();
@@ -112,6 +119,117 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
       _capturedImagePath = null;
       _isProcessing = false;
     });
+    if (index == 1) {
+      _billController.stop();
+      _aiController.start();
+      _shutterAnim.forward();
+    } else {
+      _aiController.stop();
+      _billController.start();
+      _shutterAnim.reverse();
+    }
+  }
+
+  // ── UPI scan logic ────────────────────────────────────────────────────────
+
+  void _onUpiDetect(BarcodeCapture capture) {
+    if (_upiProcessed || _tabIndex != 1) return;
+    for (final barcode in capture.barcodes) {
+      final rawValue = barcode.rawValue;
+      if (rawValue != null) {
+        _parseUpiAndNavigate(rawValue);
+        break;
+      }
+    }
+  }
+
+  void _parseUpiAndNavigate(String rawValue) {
+    if (!rawValue.startsWith('upi://pay')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not a UPI payment QR. Try again.')),
+      );
+      return;
+    }
+
+    final Uri uri;
+    try {
+      uri = Uri.parse(rawValue);
+    } on FormatException {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not read QR data. Try again.')),
+      );
+      return;
+    }
+
+    final pa = uri.queryParameters['pa'];
+    if (pa == null || pa.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invalid QR: payee UPI ID is missing. Try again.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _upiProcessed = true);
+
+    final am = uri.queryParameters['am'];
+    final pn = uri.queryParameters['pn'];
+    final tn = uri.queryParameters['tn'];
+    final amount = am != null ? double.tryParse(am) : null;
+    final note = pn?.isNotEmpty == true ? pn : tn;
+
+    if (!mounted) return;
+
+    AppRoutes.replaceWithPayExpense(
+      context,
+      payUpiUri: rawValue,
+      initialAmount: amount,
+      initialNote: note,
+    );
+  }
+
+  Future<void> _upiPickGallery() async {
+    if (_isPickingUpi || _upiProcessed) return;
+    setState(() => _isPickingUpi = true);
+
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+
+      if (!mounted) return;
+      final path = result?.files.singleOrNull?.path;
+      if (path == null) {
+        setState(() => _isPickingUpi = false);
+        return;
+      }
+
+      final capture = await _billController.analyzeImage(path);
+      if (!mounted) return;
+      setState(() => _isPickingUpi = false);
+
+      final rawValue = capture?.barcodes.firstOrNull?.rawValue;
+      if (rawValue != null) {
+        _parseUpiAndNavigate(rawValue);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No QR code found in selected image.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isPickingUpi = false);
+    }
+  }
+
+  /*
+    if (index == _tabIndex) return;
+    setState(() {
+      _tabIndex = index;
+      _capturedImagePath = null;
+      _isProcessing = false;
+    });
     if (index == 0) {
       _aiController.stop();
       _billController.start();
@@ -122,6 +240,8 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
       _shutterAnim.forward();
     }
   }
+
+  */
 
   // ── Bill scan logic ───────────────────────────────────────────────────────
 
@@ -168,8 +288,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
     setState(() => _isPicking = true);
 
     try {
-      final result = await FilePicker.platform
-          .pickFiles(type: FileType.image, allowMultiple: false);
+      final result = await FilePicker.pickFiles(type: FileType.image, allowMultiple: false);
       if (!mounted) return;
 
       final path = result?.files.singleOrNull?.path;
@@ -203,30 +322,47 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
 
   Future<void> _captureAiPhoto() async {
     if (_isCapturing || _isProcessing) return;
-    setState(() => _isCapturing = true);
+    setState(() {
+      _isCapturing = true;
+      _showShutterFlash = true;
+    });
+
+    // Tactile camera shutter flash
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) setState(() => _showShutterFlash = false);
+    });
+
     try {
-      // Release the scanner camera so image_picker can access the device camera.
-      await _aiController.stop();
-      final picked = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        imageQuality: 90,
-        preferredCameraDevice: CameraDevice.rear,
-      );
-      if (!mounted) return;
-      if (picked == null) {
-        // User cancelled – restart the live preview.
-        await _aiController.start();
-        setState(() => _isCapturing = false);
-        return;
+      final boundary = _previewKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) {
+        throw Exception('Camera preview not ready');
       }
+
+      final pixelRatio = MediaQuery.of(context).devicePixelRatio;
+      final image = await boundary.toImage(pixelRatio: pixelRatio.clamp(1.5, 3.0));
+      final byteData = await image.toByteData(format: ImageByteFormat.png);
+      if (byteData == null) {
+        throw Exception('Failed to encode camera frame');
+      }
+
+      final dir = await getTemporaryDirectory();
+      final filePath =
+          '${dir.path}/expensio_ai_capture_${DateTime.now().millisecondsSinceEpoch}.png';
+      final file = File(filePath);
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+
+      if (!mounted) return;
       setState(() {
-        _capturedImagePath = picked.path;
+        _capturedImagePath = filePath;
         _isCapturing = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
-        await _aiController.start();
         setState(() => _isCapturing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to capture frame: $e')),
+        );
       }
     }
   }
@@ -235,8 +371,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
     if (_isPicking || _isProcessing) return;
     setState(() => _isPicking = true);
     try {
-      final result = await FilePicker.platform
-          .pickFiles(type: FileType.image, allowMultiple: false);
+      final result = await FilePicker.pickFiles(type: FileType.image, allowMultiple: false);
       if (!mounted) return;
       final path = result?.files.singleOrNull?.path;
       setState(() {
@@ -259,11 +394,10 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
     final imagePath = _capturedImagePath;
     if (imagePath == null || _isProcessing) return;
 
-    final apiKey = ref.read(aiApiKeyProvider);
-    final aiEnabled = ref.read(aiEnabledProvider);
-    final modelId = ref.read(aiModelIdProvider);
+    final model = ref.read(aiModelProvider);
+    final isCloud = ref.read(isAiCloudBackedProvider);
 
-    if (!aiEnabled || apiKey.isEmpty) {
+    if (!isCloud) {
       _showAiNotConfiguredSheet();
       return;
     }
@@ -288,10 +422,8 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
     if (!mounted) return;
 
     try {
-      final result = await AiProductService.identifyProduct(
+      final result = await model.identifyProduct(
         imagePath: imagePath,
-        apiKey: apiKey,
-        modelId: modelId,
         barcodeHint: barcodeHint,
       );
       if (!mounted) return;
@@ -309,7 +441,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
         initialCategory: result.category,
         initialAmount: result.price,
       );
-    } on AiProductException catch (e) {
+    } on AiModelException catch (e) {
       if (mounted) _showAiFailureSheet(e.message);
     } catch (_) {
       if (mounted) {
@@ -461,13 +593,43 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
   @override
   Widget build(BuildContext context) {
     final capturedPath = _capturedImagePath;
-    final isAiTab = _tabIndex == 1;
+    final isAiTab = _tabIndex == 2;
     final hasCapture = isAiTab && capturedPath != null;
 
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.white,
+        leading: const Center(
+          child: AppBackButton(
+            backgroundColor: Colors.white,
+            iconColor: AppColors.textDark,
+          ),
+        ),
+        title: Text(
+          _tabIndex == 0
+              ? 'Bill Scan'
+              : (_tabIndex == 1 ? 'AI Scan' : 'UPI Pay'),
+          style: const TextStyle(
+            fontWeight: FontWeight.w900,
+            fontSize: 20,
+            color: Colors.white,
+            shadows: [Shadow(color: Colors.black87, blurRadius: 10)],
+          ),
+        ),
+        flexibleSpace: ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Container(
+              color: Colors.black.withValues(alpha: 0.35),
+            ),
+          ),
+        ),
+      ),
+      /*
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: Colors.white,
@@ -490,22 +652,35 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
           ),
         ),
       ),
+      */
       body: Stack(
         fit: StackFit.expand,
         children: [
           // ── Camera views ─────────────────────────────────────────────────
           if (!hasCapture)
             IndexedStack(
-              index: _tabIndex,
+              index: _tabIndex == 2 ? 1 : 0,
               children: [
-                // Tab 0: Bill scanner
                 MobileScanner(
                   controller: _billController,
-                  onDetect: _onBillDetect,
+                  onDetect: (capture) {
+                    if (_tabIndex == 0) {
+                      _onBillDetect(capture);
+                    } else if (_tabIndex == 1) {
+                      _onUpiDetect(capture);
+                    }
+                  },
                 ),
-                // Tab 1: AI camera (no barcode detection needed)
-                MobileScanner(controller: _aiController),
+                RepaintBoundary(
+                  key: _previewKey,
+                  child: MobileScanner(controller: _aiController),
+                ),
               ],
+            ),
+
+          if (_showShutterFlash)
+            Positioned.fill(
+              child: Container(color: Colors.white),
             ),
 
           // ── AI captured image preview ─────────────────────────────────
@@ -518,7 +693,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
             ),
 
           // ── Bill scan overlay: target box ─────────────────────────────
-          if (!isAiTab)
+          if (_tabIndex == 0)
             Center(
               child: Container(
                 width: 250,
@@ -526,6 +701,47 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                 decoration: BoxDecoration(
                   border: Border.all(color: Colors.white, width: 2),
                   borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+
+          // ── UPI scan overlay: target box ──────────────────────────────
+          if (_tabIndex == 1)
+            Center(
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFF00B0FF), width: 2.5),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.qr_code_2_rounded, color: Color(0xFF00B0FF), size: 14),
+                          SizedBox(width: 5),
+                          Text(
+                            'UPI QR',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -573,31 +789,35 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // ── Hint pill (both scan tabs, cross-fades on switch;
-                    //    hidden when AI capture preview is shown) ───────────
                     if (!hasCapture) ...[
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 250),
-                        child: isAiTab
+                        child: _tabIndex == 0
                             ? const _HintPill(
-                                key: ValueKey('ai_hint'),
-                                text:
-                                    'Point at a product & capture for AI detection',
-                              )
-                            : const _HintPill(
                                 key: ValueKey('bill_hint'),
                                 text:
                                     'Point camera at barcode or QR on receipt',
-                              ),
+                              )
+                            : (_tabIndex == 1
+                                ? const _HintPill(
+                                    key: ValueKey('upi_hint'),
+                                    text:
+                                        'Point camera at any UPI QR code to pay',
+                                  )
+                                : const _HintPill(
+                                    key: ValueKey('ai_hint'),
+                                    text:
+                                        'Point at a product & capture for AI detection',
+                                  )),
                       ),
                       const SizedBox(height: 16),
                     ],
 
-                    // ── Controls row (bill or AI) ─────────────────────────
-                    if (!isAiTab) _buildBillControls(),
-                    if (isAiTab && !hasCapture) _buildAiControls(),
-
-                    if (isAiTab && hasCapture) ...[
+                    // ── Controls row (bill, UPI, or AI) ─────────────────────
+                    if (_tabIndex == 0) _buildBillControls(),
+                    if (_tabIndex == 1) _buildUpiControls(),
+                    if (_tabIndex == 2 && !hasCapture) _buildAiControls(),
+                    if (_tabIndex == 2 && hasCapture) ...[
                       _buildAiPreviewCtas(capturedPath),
                     ],
 
@@ -642,6 +862,33 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
           label: 'Gallery',
           loading: _isPicking,
           onTap: _billPickGallery,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUpiControls() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        ValueListenableBuilder<MobileScannerState>(
+          valueListenable: _billController,
+          builder: (_, state, __) {
+            final on = state.torchState == TorchState.on;
+            return _ControlButton(
+              icon: on ? Icons.flash_on_rounded : Icons.flash_off_rounded,
+              label: on ? 'Flash On' : 'Flash Off',
+              highlighted: on,
+              onTap: _billController.toggleTorch,
+            );
+          },
+        ),
+        const SizedBox(width: 40),
+        _ControlButton(
+          icon: Icons.photo_library_outlined,
+          label: 'Gallery',
+          loading: _isPickingUpi,
+          onTap: _upiPickGallery,
         ),
       ],
     );
@@ -901,6 +1148,14 @@ class _TabSwitcher extends StatelessWidget {
             selected: currentIndex == 1,
             onTap: () => onSwitch(1),
             accentColor: const Color(0xFF7B2FF7),
+          ),
+          const SizedBox(width: 4),
+          _TabItem(
+            icon: Icons.qr_code_scanner_rounded,
+            label: 'UPI Pay',
+            selected: currentIndex == 2,
+            onTap: () => onSwitch(2),
+            accentColor: const Color(0xFF00B0FF),
           ),
         ],
       ),

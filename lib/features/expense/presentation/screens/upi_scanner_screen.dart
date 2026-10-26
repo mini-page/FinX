@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../../routes/app_routes.dart';
-import 'package:xpens/shared/widgets/app_page_header.dart';
+import 'package:expensio/shared/widgets/app_page_header.dart';
 
 /// A QR scanner specialised for the "Pay via UPI" flow.
 ///
@@ -92,7 +92,7 @@ class _UpiScannerScreenState extends State<UpiScannerScreen> {
     setState(() => _isPickingImage = true);
 
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.image,
         allowMultiple: false,
       );

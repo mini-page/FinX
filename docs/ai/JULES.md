@@ -1,4 +1,4 @@
-# JULES.md - XPensa Agent Guide (Jules / Gemini / General-Purpose AI)
+# JULES.md - Expensioa Agent Guide (Jules / Gemini / General-Purpose AI)
 
 ## 0. Memory File (Read Before Anything Else)
 
@@ -8,7 +8,7 @@
 
 ## 1. Project Overview
 
-XPensa is an offline-first, Android-focused expense tracker built with:
+Expensioa is an offline-first, Android-focused Expense tracker built with:
 
 - **Flutter** (Dart ≥ 3.0) for UI
 - **Riverpod** (`flutter_riverpod`) for state management
@@ -22,7 +22,7 @@ XPensa is an offline-first, Android-focused expense tracker built with:
 | File | Purpose |
 |------|---------|
 | `lib/main.dart` | App bootstrap, Hive init, Riverpod scope |
-| `lib/features/expense/presentation/screens/app_shell.dart` | Root scaffold with `IndexedStack` + `FloatingNavBar` |
+| `lib/features/Expense/presentation/screens/app_shell.dart` | Root scaffold with `IndexedStack` + `FloatingNavBar` |
 | `lib/core/utils/hive_bootstrap.dart` | Adapter registration – must run before any Hive box opens |
 | `lib/routes/app_routes.dart` | **All** navigation helpers – never push routes inline |
 | `memory.md` | Living project memory – read at session start, update at session end |

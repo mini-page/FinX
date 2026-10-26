@@ -1,8 +1,8 @@
 {
-  "_comment": "Voice keyword dictionary for XPens. Each group lists all surface forms (lowercase) that map to that intent. Hinglish / transliterated terms are included.",
+  "_comment": "Voice keyword dictionary for expensio. Each group lists all surface forms (lowercase) that map to that intent. Hinglish / transliterated terms are included.",
 
   "transaction_types": {
-    "expense": [
+    "Expense": [
       "spent", "spend", "spending",
       "paid", "pay", "paying",
       "bought", "buy", "buying",
@@ -52,7 +52,7 @@
     ]
   },
 
-  "expense_categories": {
+  "Expense_categories": {
     "Food & Dining": [
       "food", "eat", "ate", "eating",
       "lunch", "dinner", "breakfast", "brunch",

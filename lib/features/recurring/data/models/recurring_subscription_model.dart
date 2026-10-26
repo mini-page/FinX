@@ -1,6 +1,10 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../domain/recurrence_parser.dart';
+
+enum SubscriptionStatus { active, expired, cancelled }
+
 class RecurringSubscriptionModel {
   RecurringSubscriptionModel({
     required this.id,
@@ -10,7 +14,13 @@ class RecurringSubscriptionModel {
     required this.iconKey,
     this.note = '',
     this.isActive = true,
-    this.billingPeriod = 'monthly',
+    this.billingPeriod = '1:month',
+    this.category = '',
+    this.lastPaymentDate,
+    this.priceHistory = const [],
+    this.notifyDaysBefore = 7,
+    this.cancellationNote,
+    this.cancelledAt,
   }) : nextBillDate = DateTime(
           nextBillDate.year,
           nextBillDate.month,
@@ -42,7 +52,13 @@ class RecurringSubscriptionModel {
     required String iconKey,
     String note = '',
     bool isActive = true,
-    String billingPeriod = 'monthly',
+    String billingPeriod = '1:month',
+    String category = '',
+    DateTime? lastPaymentDate,
+    List<double> priceHistory = const [],
+    int notifyDaysBefore = 7,
+    String? cancellationNote,
+    DateTime? cancelledAt,
   }) {
     return RecurringSubscriptionModel(
       id: const Uuid().v4(),
@@ -53,6 +69,12 @@ class RecurringSubscriptionModel {
       note: note.trim(),
       isActive: isActive,
       billingPeriod: billingPeriod,
+      category: category,
+      lastPaymentDate: lastPaymentDate,
+      priceHistory: priceHistory,
+      notifyDaysBefore: notifyDaysBefore,
+      cancellationNote: cancellationNote,
+      cancelledAt: cancelledAt,
     );
   }
 
@@ -63,7 +85,66 @@ class RecurringSubscriptionModel {
   final String iconKey;
   final String note;
   final bool isActive;
+
   final String billingPeriod;
+  final String category;
+
+  // ── New fields ──────────────────────────────────────────────────────────────
+
+  /// When the last payment was logged.
+  final DateTime? lastPaymentDate;
+
+  /// Historical amounts for price increase detection (most recent first).
+  final List<double> priceHistory;
+
+  /// How many days before billing to show a pre-billing notification.
+  final int notifyDaysBefore;
+
+  /// Optional note explaining why the subscription was cancelled.
+  final String? cancellationNote;
+
+  /// When the subscription was cancelled (set when isActive → false manually).
+  final DateTime? cancelledAt;
+
+  // ── Computed ────────────────────────────────────────────────────────────────
+
+  RecurrenceParsed get recurrence => decodeRecurrence(billingPeriod);
+
+  int get daysUntilBilling =>
+      DateTime.now().difference(nextBillDate).inDays < 0
+          ? nextBillDate.difference(DateTime.now()).inDays
+          : -DateTime.now().difference(nextBillDate).inDays;
+
+  bool get isPastDue => nextBillDate.isBefore(DateTime.now()) && isActive;
+
+  /// True if nextBillDate is past and no payment logged for 2+ billing cycles.
+  bool get isExpired {
+    if (!isActive || lastPaymentDate == null) return false;
+    final rec = recurrence;
+    DateTime threshold;
+    switch (rec.unit) {
+      case RecurrenceUnit.day:
+        threshold = DateTime.now().subtract(Duration(days: rec.count * 2));
+      case RecurrenceUnit.week:
+        threshold = DateTime.now().subtract(Duration(days: rec.count * 14));
+      case RecurrenceUnit.month:
+        threshold = DateTime.now().subtract(Duration(days: rec.count * 60));
+    }
+    return lastPaymentDate!.isBefore(threshold);
+  }
+
+  /// Whether the latest amount differs from the average of previous prices.
+  bool get isPriceIncreased {
+    if (priceHistory.length < 2) return false;
+    final avg = priceHistory.sublist(1).reduce((a, b) => a + b) /
+        (priceHistory.length - 1);
+    return amount > avg * 1.05; // >5% increase
+  }
+
+  double? get previousAmount =>
+      priceHistory.isNotEmpty ? priceHistory.first : null;
+
+  // ── Methods ─────────────────────────────────────────────────────────────────
 
   RecurringSubscriptionModel copyWith({
     String? id,
@@ -74,6 +155,15 @@ class RecurringSubscriptionModel {
     String? note,
     bool? isActive,
     String? billingPeriod,
+    String? category,
+    DateTime? lastPaymentDate,
+    bool? clearLastPaymentDate,
+    List<double>? priceHistory,
+    int? notifyDaysBefore,
+    String? cancellationNote,
+    bool? clearCancellationNote,
+    DateTime? cancelledAt,
+    bool? clearCancelledAt,
   }) {
     return RecurringSubscriptionModel(
       id: id ?? this.id,
@@ -84,50 +174,34 @@ class RecurringSubscriptionModel {
       note: note ?? this.note,
       isActive: isActive ?? this.isActive,
       billingPeriod: billingPeriod ?? this.billingPeriod,
+      category: category ?? this.category,
+      lastPaymentDate: clearLastPaymentDate == true
+          ? null
+          : (lastPaymentDate ?? this.lastPaymentDate),
+      priceHistory: priceHistory ?? this.priceHistory,
+      notifyDaysBefore: notifyDaysBefore ?? this.notifyDaysBefore,
+      cancellationNote: clearCancellationNote == true
+          ? null
+          : (cancellationNote ?? this.cancellationNote),
+      cancelledAt: clearCancelledAt == true
+          ? null
+          : (cancelledAt ?? this.cancelledAt),
+    );
+  }
+
+  /// Records a payment: updates lastPaymentDate and tracks amount in priceHistory.
+  RecurringSubscriptionModel recordPayment(DateTime paidAt) {
+    final updatedHistory = [amount, ...priceHistory].take(12).toList();
+    return copyWith(
+      lastPaymentDate: paidAt,
+      priceHistory: updatedHistory,
     );
   }
 
   DateTime calculateNextBillDate(DateTime fromDate) {
-    switch (billingPeriod.toLowerCase()) {
-      case 'weekly':
-        return fromDate.add(const Duration(days: 7));
-      case 'quarterly':
-        int nextMonth = fromDate.month + 3;
-        int nextYear = fromDate.year;
-        if (nextMonth > 12) {
-          nextYear += (nextMonth - 1) ~/ 12;
-          nextMonth = (nextMonth - 1) % 12 + 1;
-        }
-        int daysInNextMonth = _getDaysInMonth(nextYear, nextMonth);
-        return DateTime(nextYear, nextMonth, fromDate.day.clamp(1, daysInNextMonth));
-      case 'yearly':
-        int nextYear = fromDate.year + 1;
-        int nextMonth = fromDate.month;
-        int daysInNextMonth = _getDaysInMonth(nextYear, nextMonth);
-        return DateTime(nextYear, nextMonth, fromDate.day.clamp(1, daysInNextMonth));
-      case 'monthly':
-      default:
-        int nextMonth = fromDate.month + 1;
-        int nextYear = fromDate.year;
-        if (nextMonth > 12) {
-          nextMonth = 1;
-          nextYear += 1;
-        }
-        int daysInNextMonth = _getDaysInMonth(nextYear, nextMonth);
-        return DateTime(nextYear, nextMonth, fromDate.day.clamp(1, daysInNextMonth));
-    }
-  }
-
-  int _getDaysInMonth(int year, int month) {
-    if (month == 2) {
-      final isLeap = (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0);
-      return isLeap ? 29 : 28;
-    }
-    const days = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    return days[month];
+    return recurrence.nextDate(fromDate);
   }
 }
-
 
 class RecurringSubscriptionModelAdapter
     extends TypeAdapter<RecurringSubscriptionModel> {
@@ -146,12 +220,45 @@ class RecurringSubscriptionModelAdapter
     final note = reader.readString();
     final isActive = reader.readBool();
 
-    String billingPeriod = 'monthly';
+    String billingPeriod = '1:month';
     try {
       billingPeriod = reader.readString();
-    } catch (_) {
-      billingPeriod = 'monthly';
-    }
+    } catch (_) {}
+
+    String category = '';
+    try {
+      category = reader.readString();
+    } catch (_) {}
+
+    // ── New fields (backwards compatible) ──────────────────────────────────
+    DateTime? lastPaymentDate;
+    try {
+      final ts = reader.readInt();
+      if (ts != 0) lastPaymentDate = DateTime.fromMillisecondsSinceEpoch(ts);
+    } catch (_) {}
+
+    List<double> priceHistory = const [];
+    try {
+      final len = reader.readByte();
+      priceHistory = List.generate(len, (_) => reader.readDouble());
+    } catch (_) {}
+
+    int notifyDaysBefore = 7;
+    try {
+      notifyDaysBefore = reader.readInt();
+    } catch (_) {}
+
+    String? cancellationNote;
+    try {
+      final s = reader.readString();
+      if (s.isNotEmpty) cancellationNote = s;
+    } catch (_) {}
+
+    DateTime? cancelledAt;
+    try {
+      final ts = reader.readInt();
+      if (ts != 0) cancelledAt = DateTime.fromMillisecondsSinceEpoch(ts);
+    } catch (_) {}
 
     return RecurringSubscriptionModel(
       id: id,
@@ -162,6 +269,12 @@ class RecurringSubscriptionModelAdapter
       note: note,
       isActive: isActive,
       billingPeriod: billingPeriod,
+      category: category,
+      lastPaymentDate: lastPaymentDate,
+      priceHistory: priceHistory,
+      notifyDaysBefore: notifyDaysBefore,
+      cancellationNote: cancellationNote,
+      cancelledAt: cancelledAt,
     );
   }
 
@@ -175,6 +288,16 @@ class RecurringSubscriptionModelAdapter
       ..writeString(obj.iconKey)
       ..writeString(obj.note)
       ..writeBool(obj.isActive)
-      ..writeString(obj.billingPeriod);
+      ..writeString(obj.billingPeriod)
+      ..writeString(obj.category);
+    // New fields
+    writer.writeInt(obj.lastPaymentDate?.millisecondsSinceEpoch ?? 0);
+    writer.writeByte(obj.priceHistory.length);
+    for (final d in obj.priceHistory) {
+      writer.writeDouble(d);
+    }
+    writer.writeInt(obj.notifyDaysBefore);
+    writer.writeString(obj.cancellationNote ?? '');
+    writer.writeInt(obj.cancelledAt?.millisecondsSinceEpoch ?? 0);
   }
 }

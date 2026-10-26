@@ -9,12 +9,12 @@ import 'package:workmanager/workmanager.dart';
 
 import '../../data/datasource/preferences_local_datasource.dart';
 import '../../data/models/app_preferences_model.dart';
-import 'package:xpens/features/categories/data/models/custom_category_model.dart';
+import 'package:expensio/features/categories/data/models/custom_category_model.dart';
 import '../../data/repositories/hive_preferences_repository.dart';
 import '../../domain/repositories/preferences_repository.dart';
-import 'package:xpens/features/categories/presentation/widgets/expense_category.dart';
+import 'package:expensio/features/categories/presentation/widgets/expense_category.dart';
 
-const String backupTaskTag = 'xpens_offline_backup';
+const String backupTaskTag = 'expensio_offline_backup';
 
 final preferencesLocalDatasourceProvider = Provider<PreferencesLocalDatasource>(
   (ref) {
@@ -262,6 +262,11 @@ final smartRemindersEnabledProvider = Provider<bool>((ref) {
       AppPreferencesModel.defaults.smartRemindersEnabled;
 });
 
+final notificationsEnabledProvider = Provider<bool>((ref) {
+  return ref.watch(appPreferencesProvider).value?.notificationsEnabled ??
+      AppPreferencesModel.defaults.notificationsEnabled;
+});
+
 final aiApiKeyProvider = Provider<String>((ref) {
   return ref.watch(appPreferencesProvider).value?.aiApiKey ??
       AppPreferencesModel.defaults.aiApiKey;
@@ -419,6 +424,12 @@ class AppPreferencesController {
         .save(_current.copyWith(smartRemindersEnabled: enabled));
   }
 
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    await _ref
+        .read(appPreferencesProvider.notifier)
+        .save(_current.copyWith(notificationsEnabled: enabled));
+  }
+
   Future<void> setOnboardingCompleted(bool completed) async {
     await _ref
         .read(appPreferencesProvider.notifier)
@@ -471,8 +482,8 @@ class AppPreferencesController {
     }
 
     Workmanager().registerPeriodicTask(
-      'xpens-periodic-backup',
-      'xpens-periodic-backup-task',
+      'expensio-periodic-backup',
+      'expensio-periodic-backup-task',
       tag: backupTaskTag,
       frequency: duration,
       existingWorkPolicy: ExistingPeriodicWorkPolicy.replace,

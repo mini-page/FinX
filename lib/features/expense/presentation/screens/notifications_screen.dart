@@ -6,6 +6,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../shared/widgets/app_page_header.dart';
 import '../provider/notifications_provider.dart';
+import '../../../../routes/app_routes.dart';
+import 'package:expensio/features/sms_parser/sms_parser.dart';
 
 /// Production-ready Notifications screen.
 ///
@@ -198,6 +200,8 @@ class _SectionHeader extends StatelessWidget {
 
   String _labelFor(AppNotificationType type) {
     switch (type) {
+      case AppNotificationType.smsTransaction:
+        return 'Detected Bank Transactions';
       case AppNotificationType.budgetAlert:
         return 'Budget alerts';
       case AppNotificationType.recurringDue:
@@ -212,7 +216,7 @@ class _SectionHeader extends StatelessWidget {
 // Individual notification tile
 // ---------------------------------------------------------------------------
 
-class _NotificationTile extends StatelessWidget {
+class _NotificationTile extends ConsumerWidget {
   const _NotificationTile({
     super.key,
     required this.item,
@@ -224,8 +228,28 @@ class _NotificationTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onDismiss;
 
+  Future<void> _handleSmsAction(BuildContext context, WidgetRef ref) async {
+    final queue = ref.read(smsQueueProvider);
+    final txId = item.metadata;
+    final queueItem = queue.firstWhere(
+      (q) => q.transaction.id == txId,
+      orElse: () => queue.first,
+    );
+    final fill = ref.read(smsQueueControllerProvider).prefillFor(queueItem.transaction);
+    await AppRoutes.pushAddExpense(
+      context,
+      initialAmount: fill.amount,
+      initialCategory: fill.category,
+      initialDate: fill.date,
+      initialNote: fill.note,
+      initialAccountId: fill.accountId,
+      initialType: fill.type,
+    );
+    ref.read(smsQueueProvider.notifier).markConfirmed(queueItem.transaction.id);
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Dismissible(
       key: ValueKey<String>('dismissible_${item.id}'),
       direction: DismissDirection.endToStart,
@@ -320,6 +344,68 @@ class _NotificationTile extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
+                        if (item.type == AppNotificationType.smsTransaction) ...[
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              InkWell(
+                                onTap: () => _handleSmsAction(context, ref),
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [Color(0xFF7B2FF7), Color(0xFFEC4899)],
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x227B2FF7),
+                                        blurRadius: 6,
+                                        offset: Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.add_task_rounded, size: 14, color: Colors.white),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Review & Log',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: onDismiss,
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: const Text(
+                                    'Dismiss',
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -334,6 +420,8 @@ class _NotificationTile extends StatelessWidget {
 
   Color _typeColor(AppNotificationType type) {
     switch (type) {
+      case AppNotificationType.smsTransaction:
+        return const Color(0xFF7B2FF7);
       case AppNotificationType.budgetAlert:
         return AppColors.warning;
       case AppNotificationType.recurringDue:
@@ -345,6 +433,8 @@ class _NotificationTile extends StatelessWidget {
 
   IconData _typeIcon(AppNotificationType type) {
     switch (type) {
+      case AppNotificationType.smsTransaction:
+        return Icons.sms_rounded;
       case AppNotificationType.budgetAlert:
         return Icons.pie_chart_outline_rounded;
       case AppNotificationType.recurringDue:

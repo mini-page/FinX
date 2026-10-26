@@ -27,6 +27,7 @@ class AppPreferencesModel {
     this.builtInExpenseCategoryOverridesJson = '',
     this.builtInIncomeCategoryOverridesJson = '',
     this.categorySubcategoriesJson = '',
+    this.notificationsEnabled = true,
     this.smsParsingEnabled = false,
     this.smsDefaultAccountId = '',
     this.smsDefaultCategory = '',
@@ -63,6 +64,7 @@ class AppPreferencesModel {
     builtInExpenseCategoryOverridesJson: '',
     builtInIncomeCategoryOverridesJson: '',
     categorySubcategoriesJson: '',
+    notificationsEnabled: true,
     smsParsingEnabled: false,
     smsDefaultAccountId: '',
     smsDefaultCategory: '',
@@ -78,6 +80,10 @@ class AppPreferencesModel {
   final String themeModeKey;
   final bool privacyModeEnabled;
   final bool smartRemindersEnabled;
+
+  /// Whether system-level push notifications are enabled.
+  final bool notificationsEnabled;
+
   final String locale;
   final String currencySymbol;
   final bool isOnboardingCompleted;
@@ -190,6 +196,7 @@ class AppPreferencesModel {
     String? builtInExpenseCategoryOverridesJson,
     String? builtInIncomeCategoryOverridesJson,
     String? categorySubcategoriesJson,
+    bool? notificationsEnabled,
     bool? smsParsingEnabled,
     String? smsDefaultAccountId,
     String? smsDefaultCategory,
@@ -206,6 +213,8 @@ class AppPreferencesModel {
       privacyModeEnabled: privacyModeEnabled ?? this.privacyModeEnabled,
       smartRemindersEnabled:
           smartRemindersEnabled ?? this.smartRemindersEnabled,
+      notificationsEnabled:
+          notificationsEnabled ?? this.notificationsEnabled,
       locale: locale ?? this.locale,
       currencySymbol: currencySymbol ?? this.currencySymbol,
       isOnboardingCompleted:
@@ -303,6 +312,8 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
         AppPreferencesModel.defaults.builtInIncomeCategoryOverridesJson;
     String categorySubcategoriesJson =
         AppPreferencesModel.defaults.categorySubcategoriesJson;
+    bool notificationsEnabled =
+        AppPreferencesModel.defaults.notificationsEnabled;
     bool smsParsingEnabled = AppPreferencesModel.defaults.smsParsingEnabled;
     String smsDefaultAccountId =
         AppPreferencesModel.defaults.smsDefaultAccountId;
@@ -366,6 +377,7 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
       if (reader.availableBytes > 0) {
         categorySubcategoriesJson = reader.readString();
       }
+      if (reader.availableBytes > 0) notificationsEnabled = reader.readBool();
       if (reader.availableBytes > 0) smsParsingEnabled = reader.readBool();
       if (reader.availableBytes > 0) smsDefaultAccountId = reader.readString();
       if (reader.availableBytes > 0) smsDefaultCategory = reader.readString();
@@ -406,6 +418,7 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
       builtInExpenseCategoryOverridesJson: builtInExpenseCategoryOverridesJson,
       builtInIncomeCategoryOverridesJson: builtInIncomeCategoryOverridesJson,
       categorySubcategoriesJson: categorySubcategoriesJson,
+      notificationsEnabled: notificationsEnabled,
       smsParsingEnabled: smsParsingEnabled,
       smsDefaultAccountId: smsDefaultAccountId,
       smsDefaultCategory: smsDefaultCategory,
@@ -450,6 +463,7 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
       ..writeString(obj.builtInExpenseCategoryOverridesJson)
       ..writeString(obj.builtInIncomeCategoryOverridesJson)
       ..writeString(obj.categorySubcategoriesJson)
+      ..writeBool(obj.notificationsEnabled)
       ..writeBool(obj.smsParsingEnabled)
       ..writeString(obj.smsDefaultAccountId)
       ..writeString(obj.smsDefaultCategory)

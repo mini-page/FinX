@@ -1,7 +1,7 @@
 # Security Auditor Agent
 
 ## Role
-Audits XPensa for security vulnerabilities across local storage, data handling, and web deployment.
+Audits Expensioa for security vulnerabilities across local storage, data handling, and web deployment.
 
 ## Responsibilities
 - Verify sensitive data (currency amounts, notes) is stored only in Hive on-device, never in plain-text logs.

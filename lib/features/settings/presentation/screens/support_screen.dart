@@ -65,9 +65,11 @@ class SupportScreen extends StatelessWidget {
               iconColor: AppColors.primaryBlue,
               title: 'Share with Friends',
               subtitle: 'Word of mouth is the best marketing',
-              onTap: () => Share.share(
-                'Check out XPens – a free, offline-first expense tracker! '
-                '$_repoUrl',
+              onTap: () => SharePlus.instance.share(
+                ShareParams(
+                  text: 'Check out XPens – a free, offline-first expense tracker! '
+                      '$_repoUrl',
+                ),
               ),
             ),
             const SizedBox(height: 28),

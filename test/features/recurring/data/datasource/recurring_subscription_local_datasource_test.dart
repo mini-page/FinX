@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
-import 'package:xpens/features/recurring/data/datasource/recurring_subscription_local_datasource.dart';
-import 'package:xpens/features/recurring/data/models/recurring_subscription_model.dart';
+import 'package:expensio/features/recurring/data/datasource/recurring_subscription_local_datasource.dart';
+import 'package:expensio/features/recurring/data/models/recurring_subscription_model.dart';
 
 // Manual Mock for Box
 class MockBox<T> implements Box<T> {

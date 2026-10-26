@@ -26,7 +26,7 @@ Resolve Riverpod state bugs: stale UI, missing rebuilds, provider lifecycle erro
    | Issue | Fix |
    |-------|-----|
    | UI not rebuilding | Confirm `ref.watch` (not `ref.read`) in `build()`. |
-   | Stale list after add/delete | Call `ref.invalidate(expenseListProvider)` after mutation. |
+   | Stale list after add/delete | Call `ref.invalidate(ExpenseListProvider)` after mutation. |
    | `StateError: Bad state` | Ensure provider is inside `ProviderScope`. |
    | Infinite loading | Check `AsyncNotifier.build()` completes and returns data. |
    | Double build on init | Use `ref.listen` instead of `ref.watch` for side-effects. |

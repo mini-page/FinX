@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xpens/features/recurring/data/models/recurring_subscription_model.dart';
+import 'package:expensio/features/recurring/data/models/recurring_subscription_model.dart';
 
 void main() {
   group('RecurringSubscriptionModel', () {

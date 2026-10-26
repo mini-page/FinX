@@ -4,13 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../shared/widgets/app_page_header.dart';
-import 'package:xpens/features/accounts/presentation/provider/account_providers.dart';
-import 'package:xpens/features/categories/presentation/provider/budget_state.dart';
-import 'package:xpens/features/expense/data/models/expense_model.dart';
-import 'package:xpens/features/expense/presentation/provider/expense_providers.dart';
-import 'package:xpens/features/expense/presentation/widgets/ui_feedback.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
-import 'package:xpens/routes/app_routes.dart';
+import 'package:expensio/features/accounts/presentation/provider/account_providers.dart';
+import 'package:expensio/features/categories/presentation/provider/budget_state.dart';
+import 'package:expensio/features/expense/data/models/expense_model.dart';
+import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
+import 'package:expensio/features/expense/presentation/widgets/ui_feedback.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/routes/app_routes.dart';
 import 'stats/stats_widgets.dart';
 
 class StatsScreen extends ConsumerStatefulWidget {
@@ -23,11 +23,13 @@ class StatsScreen extends ConsumerStatefulWidget {
 class _StatsScreenState extends ConsumerState<StatsScreen> {
   String _selectedRange = 'This Month';
 
+  /*
   static const List<({String label, String value})> _rangeOptions = [
     (label: 'Month', value: 'This Month'),
     (label: 'Year', value: 'This Year'),
     (label: 'Lifetime', value: 'All Time'),
   ];
+  */
 
   Future<void> _openEditExpenseScreen(
     BuildContext context,
@@ -84,24 +86,32 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
       appBar: GradientAppBar(
-        title: const Column(
+        title: Row(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(
+            const Text(
               'Analytics',
               style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
                 color: AppColors.textDark,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
               ),
             ),
-            Text(
-              'Track • Understand • Improve',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                snapshot.periodLabel,
+                style: const TextStyle(
+                  color: AppColors.primaryBlue,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -131,6 +141,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           children: <Widget>[
             const SizedBox(height: AppSpacing.sm),
 
+            /*
             // 1. Time Range Selector Tabs (Month, Year, Lifetime)
             Container(
               height: 40,
@@ -214,6 +225,8 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
+
+            */
 
             // 3. Overview Card (Income, Expense, Net Flow + 3 sub-metrics)
             Padding(

@@ -4,16 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import 'package:xpens/core/theme/app_colors.dart';
-import 'package:xpens/core/theme/app_tokens.dart';
-import 'package:xpens/routes/app_routes.dart';
-import 'package:xpens/features/expense/data/models/expense_model.dart';
-import 'package:xpens/features/accounts/presentation/provider/account_providers.dart';
-import 'package:xpens/features/accounts/data/models/account_model.dart';
-import 'package:xpens/features/expense/presentation/provider/expense_providers.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
-import 'package:xpens/features/recurring/presentation/widgets/recurring_tool_view.dart';
-import 'package:xpens/features/accounts/presentation/widgets/split_bill_tool_view.dart';
+import 'package:expensio/core/theme/app_colors.dart';
+import 'package:expensio/core/theme/app_tokens.dart';
+import 'package:expensio/routes/app_routes.dart';
+import 'package:expensio/features/expense/data/models/expense_model.dart';
+import 'package:expensio/features/accounts/presentation/provider/account_providers.dart';
+import 'package:expensio/features/accounts/data/models/account_model.dart';
+import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/recurring/presentation/widgets/recurring_tool_view.dart';
+import 'package:expensio/features/accounts/presentation/widgets/split_bill_tool_view.dart';
 
 const _maxDisplayedFutureTransactions = 6;
 
@@ -326,7 +326,7 @@ class GoalsToolView extends ConsumerWidget {
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
+                  color: Colors.black.withValues(alpha: 0.04),
                   blurRadius: 16,
                   offset: const Offset(0, 8),
                 ),
@@ -932,7 +932,7 @@ class GoalsToolView extends ConsumerWidget {
                               margin: const EdgeInsets.only(right: 8),
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? activeColor.withOpacity(0.15)
+                                    ? activeColor.withValues(alpha: 0.15)
                                     : const Color(0xFFF1F5F9),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
@@ -1037,7 +1037,7 @@ class GoalsToolView extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String?>(
-                      value: selectedAccountId,
+                      initialValue: selectedAccountId,
                       dropdownColor: Colors.white,
                       decoration: InputDecoration(
                         filled: true,
@@ -1107,7 +1107,7 @@ class GoalsToolView extends ConsumerWidget {
                               boxShadow: [
                                 if (isSelected)
                                   BoxShadow(
-                                    color: color.withOpacity(0.4),
+                                    color: color.withValues(alpha: 0.4),
                                     blurRadius: 8,
                                     spreadRadius: 2,
                                   ),

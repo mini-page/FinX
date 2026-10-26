@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_tokens.dart';
+import 'app_back_button.dart';
 
 /// A consistent sticky page header used across all main screens.
 ///
@@ -135,12 +136,14 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.showBackButton = true,
     this.actions,
     this.bottom,
+    this.centerTitle = false,
   });
 
   final dynamic title; // Can be String or Widget
   final bool showBackButton;
   final List<Widget>? actions;
   final PreferredSizeWidget? bottom;
+  final bool centerTitle;
 
   @override
   Size get preferredSize => Size.fromHeight(
@@ -153,7 +156,7 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
       backgroundColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
-      centerTitle: true,
+      centerTitle: centerTitle,
       flexibleSpace: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -167,32 +170,7 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ),
       leading: showBackButton
-          ? Center(
-              child: GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.chevron_left_rounded,
-                    color: AppColors.textDark,
-                    size: 22,
-                  ),
-                ),
-              ),
-            )
+          ? const Center(child: AppBackButton())
           : null,
       title: title is Widget
           ? title as Widget
@@ -200,7 +178,7 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
               title as String,
               style: const TextStyle(
                 color: AppColors.textDark,
-                fontSize: 18,
+                fontSize: 22,
                 fontWeight: FontWeight.w900,
                 letterSpacing: -0.5,
               ),
@@ -210,4 +188,3 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 }
-

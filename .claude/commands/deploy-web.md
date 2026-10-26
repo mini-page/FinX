@@ -1,9 +1,9 @@
-# deploy-web — Build & Deploy the XPensa Web SPA
+# deploy-web — Build & Deploy the Expensioa Web SPA
 
 ## Purpose
-Build and publish the static website (`website/` + `public_assets/`) for the XPensa landing page / web presence.
+Build and publish the static website (`website/` + `public_assets/`) for the Expensioa landing page / web presence.
 
-> **Scope:** This command is for the **static HTML/CSS/JS website** located in `website/` and `public_assets/`, **not** for a Flutter Web build. The XPensa landing page is a standard web SPA, not a Flutter app.
+> **Scope:** This command is for the **static HTML/CSS/JS website** located in `website/` and `public_assets/`, **not** for a Flutter Web build. The Expensioa landing page is a standard web SPA, not a Flutter app.
 
 ## Project Structure
 ```

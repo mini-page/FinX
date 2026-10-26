@@ -1,19 +1,19 @@
-# XPens 💸
+# Expensio 💸
 
-XPens is a modern, personal expense tracker designed for a simple, focused, and intuitive money-management experience. It makes daily spending easy to log, review, and understand—all without clutter, complex setups, or privacy compromises.
+Expensio is a modern, personal Expense tracker designed for a simple, focused, and intuitive money-management experience. It makes daily spending easy to log, review, and understand—all without clutter, complex setups, or privacy compromises.
 
 <p align="center">
-  <img src="public_assets/Google-Pixel5-localhost.png" width="300" alt="XPens App Screenshot"/>
+  <img src="public_assets/Google-Pixel5-localhost.png" width="300" alt="Expensio App Screenshot"/>
 </p>
 
 ---
 
-## ✨ Why Choose XPens?
+## ✨ Why Choose Expensio?
 
 | Advantage | Description |
 | :---: | --- |
 | 🛡️ **Absolute Privacy** | We don't have servers, we don't sell data, and there are no ads. All data is kept strictly on your local device. |
-| ⚡ **Lightning Fast** | Built with Flutter for native performance. Add an expense in seconds without waiting for cloud syncs. |
+| ⚡ **Lightning Fast** | Built with Flutter for native performance. Add an Expense in seconds without waiting for cloud syncs. |
 | 🪟 **Clear Interface** | View your spending and accounts in a clean, distraction-free layout. |
 | 📴 **Offline Ready** | No internet required. Manage your money anytime, anywhere. |
 
@@ -37,7 +37,7 @@ XPens is a modern, personal expense tracker designed for a simple, focused, and 
 
 We are actively building new, frictionless ways to manage your money:
 
-*   **Voice Input:** Log expenses hands-free.
+*   **Voice Input:** Log Expenses hands-free.
 *   **SMS Parsing:** Auto-log from bank text messages.
 *   **Split Bills:** Divide tabs with friends easily.
 *   **Web Version:** Manage from your desktop browser.
@@ -47,7 +47,7 @@ We are actively building new, frictionless ways to manage your money:
 
 ## 📱 Supported Platforms
 
-Enjoy tracking your expenses on any device! XPens currently supports:
+Enjoy tracking your Expenses on any device! Expensio currently supports:
 
 ✅ Android (via GitHub Releases)
 🔜 iOS (Planned)

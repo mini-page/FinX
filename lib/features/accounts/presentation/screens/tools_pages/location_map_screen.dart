@@ -4,13 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
-import 'package:xpens/core/theme/app_colors.dart';
-import 'package:xpens/features/expense/data/models/expense_model.dart';
-import 'package:xpens/features/expense/presentation/provider/expense_providers.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
-import 'package:xpens/routes/app_routes.dart';
-import 'package:xpens/shared/widgets/app_page_header.dart';
-import 'package:xpens/shared/widgets/app_search_bar.dart';
+import 'package:expensio/core/theme/app_colors.dart';
+import 'package:expensio/features/expense/data/models/expense_model.dart';
+import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/routes/app_routes.dart';
+import 'package:expensio/shared/widgets/app_page_header.dart';
+import 'package:expensio/shared/widgets/app_search_bar.dart';
 
 class _DistanceExpensePair {
   final ExpenseModel expense;
@@ -35,6 +35,7 @@ class _LocationMapScreenState extends ConsumerState<LocationMapScreen> {
   bool _visualMode = true;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _isSearchOpen = false;
 
   @override
   void initState() {
@@ -161,18 +162,35 @@ class _LocationMapScreenState extends ConsumerState<LocationMapScreen> {
         actions: [
           IconButton(
             icon: Icon(
-              _visualMode ? Icons.list_alt_rounded : Icons.radar_rounded,
-              color: AppColors.primaryBlue,
+              _isSearchOpen ? Icons.close_rounded : Icons.search_rounded,
+              color: _isSearchOpen ? AppColors.accentPurple : AppColors.textDark,
             ),
             onPressed: () {
               setState(() {
-                _visualMode = !_visualMode;
+                _isSearchOpen = !_isSearchOpen;
+                if (!_isSearchOpen) {
+                  _searchQuery = '';
+                  _searchController.clear();
+                }
               });
             },
-            tooltip: _visualMode ? 'Switch to List' : 'Switch to Radar Map',
+            tooltip: _isSearchOpen ? 'Close Search' : 'Search Locations',
           ),
+          if (!_isSearchOpen)
+            IconButton(
+              icon: Icon(
+                _visualMode ? Icons.list_alt_rounded : Icons.radar_rounded,
+                color: AppColors.primaryBlue,
+              ),
+              onPressed: () {
+                setState(() {
+                  _visualMode = !_visualMode;
+                });
+              },
+              tooltip: _visualMode ? 'Switch to List' : 'Switch to Radar Map',
+            ),
           IconButton(
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const Icon(Icons.refresh_rounded, color: AppColors.textDark),
             onPressed: _initLocation,
             tooltip: 'Refresh Location',
           ),
@@ -180,7 +198,71 @@ class _LocationMapScreenState extends ConsumerState<LocationMapScreen> {
       ),
       body: Column(
         children: [
-          // Search & Filter Panel
+          // Search & Filter Panel (Expandable)
+          AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeInOutCubic,
+            child: _isSearchOpen
+                ? Container(
+                    color: Colors.white,
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    child: AppSearchBar(
+                      controller: _searchController,
+                      hintText: 'Search location notes or categories...',
+                      onChanged: (val) {
+                        setState(() {
+                          _searchQuery = val.trim().toLowerCase();
+                        });
+                      },
+                      onClear: () {
+                        setState(() {
+                          _searchQuery = '';
+                        });
+                      },
+                      trailing: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            setState(() {
+                              _visualMode = !_visualMode;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            height: 32,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFE9D5FF), width: 1.1),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _visualMode ? Icons.list_alt_rounded : Icons.radar_rounded,
+                                  size: 15,
+                                  color: AppColors.accentPurple,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _visualMode ? 'List' : 'Radar',
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textDark,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+          /*
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -205,6 +287,8 @@ class _LocationMapScreenState extends ConsumerState<LocationMapScreen> {
               ],
             ),
           ),
+
+          */
 
           // Main View Body
           Expanded(
@@ -484,7 +568,7 @@ class _LocationMapScreenState extends ConsumerState<LocationMapScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: catColor.withOpacity(0.3), width: 1.5),
+        border: Border.all(color: catColor.withValues(alpha: 0.3), width: 1.5),
         boxShadow: const [
           BoxShadow(
             color: AppColors.cardShadow,
@@ -502,7 +586,7 @@ class _LocationMapScreenState extends ConsumerState<LocationMapScreen> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: catColor.withOpacity(0.12),
+                  color: catColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -672,7 +756,7 @@ class _LocationMapScreenState extends ConsumerState<LocationMapScreen> {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: catColor.withOpacity(0.12),
+                        color: catColor.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
@@ -952,17 +1036,17 @@ class RadarPainter extends CustomPainter {
 
       if (isSelected) {
         final haloPaint = Paint()
-          ..color = nodeColor.withOpacity(0.3)
+          ..color = nodeColor.withValues(alpha: 0.3)
           ..style = PaintingStyle.fill;
         canvas.drawCircle(Offset(plotX, plotY), 16.0, haloPaint);
 
         final pulsePaint = Paint()
-          ..color = nodeColor.withOpacity(0.15)
+          ..color = nodeColor.withValues(alpha: 0.15)
           ..style = PaintingStyle.fill;
         canvas.drawCircle(Offset(plotX, plotY), 24.0, pulsePaint);
       } else {
         final auraPaint = Paint()
-          ..color = nodeColor.withOpacity(0.12)
+          ..color = nodeColor.withValues(alpha: 0.12)
           ..style = PaintingStyle.fill;
         canvas.drawCircle(Offset(plotX, plotY), 8.0, auraPaint);
       }
@@ -981,7 +1065,7 @@ class RadarPainter extends CustomPainter {
 
     // Draw center user marker (pulsing neon pink dot)
     final userHaloPaint = Paint()
-      ..color = const Color(0xFFEC4899).withOpacity(0.2)
+      ..color = const Color(0xFFEC4899).withValues(alpha: 0.2)
       ..style = PaintingStyle.fill;
     canvas.drawCircle(center, 12.0, userHaloPaint);
 
@@ -1002,7 +1086,7 @@ class RadarPainter extends CustomPainter {
     );
 
     final textStyle = TextStyle(
-      color: Colors.white.withOpacity(0.35),
+      color: Colors.white.withValues(alpha: 0.35),
       fontSize: 9,
       fontWeight: FontWeight.bold,
     );

@@ -5,11 +5,11 @@ import '../features/expense/presentation/screens/add_expense_screen.dart';
 import '../features/expense/presentation/screens/notifications_screen.dart';
 import '../features/expense/presentation/screens/records_history_screen.dart';
 import '../features/expense/presentation/screens/unified_scanner_screen.dart';
-import 'package:xpens/features/settings/presentation/screens/settings_screen.dart';
+import 'package:expensio/features/settings/presentation/screens/settings_screen.dart';
 import '../features/expense/presentation/screens/upi_scanner_screen.dart';
 import '../features/expense/presentation/screens/calendar_view_screen.dart';
 
-/// Centralised navigation helpers for XPens.
+/// Centralised navigation helpers for Expensio.
 ///
 /// All `Navigator.push` / `pushReplacement` calls for named screens are
 /// routed through this class so that screen locations and constructor
@@ -131,7 +131,7 @@ abstract final class AppRoutes {
   /// Push the UPI QR scanner for the "Pay via UPI" flow.
   static Future<void> pushUpiScanner(BuildContext context) {
     return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const UpiScannerScreen()),
+      MaterialPageRoute<void>(builder: (_) => const UnifiedScannerScreen(initialTab: 1)),
     );
   }
 

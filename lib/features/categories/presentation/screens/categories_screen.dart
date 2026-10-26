@@ -6,20 +6,24 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../shared/widgets/app_tab_switcher.dart';
 import '../../../../shared/widgets/app_search_bar.dart';
-import 'package:xpens/features/accounts/accounts.dart';
+import '../../../../shared/widgets/universal_top_bar.dart';
+import '../../../../shared/widgets/app_filter_sheet.dart';
+import 'package:expensio/features/accounts/accounts.dart';
 import '../../data/models/custom_category_model.dart';
-import 'package:xpens/features/expense/data/models/expense_model.dart';
+import 'package:expensio/features/expense/data/models/expense_model.dart';
 import '../provider/budget_providers.dart';
 import '../provider/budget_state.dart';
-import 'package:xpens/features/expense/presentation/provider/expense_providers.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
-import 'package:xpens/features/expense/presentation/widgets/amount_visibility.dart';
+import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/expense/presentation/widgets/amount_visibility.dart';
 import '../widgets/category_editor_sheet.dart';
 import '../widgets/expense_category.dart';
 import 'categories/budget_popup.dart';
 import 'categories/categories_widgets.dart';
 
 enum _BoardMode { expenses, income, accounts }
+enum _CategorySort { nameAsc, amountDesc }
+enum _CategoryFilter { all, budgetedOnly, overBudgetOnly }
 
 class CategoriesScreen extends ConsumerStatefulWidget {
   const CategoriesScreen({super.key});
@@ -34,6 +38,9 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
   late final TextEditingController _searchController;
   _BoardMode _mode = _BoardMode.expenses;
   String _searchQuery = '';
+  bool _isSearchOpen = false;
+  _CategorySort _catSort = _CategorySort.nameAsc;
+  _CategoryFilter _catFilter = _CategoryFilter.all;
 
   static const List<AppTabItem> _categoryTabs = <AppTabItem>[
     AppTabItem(label: 'Expense', icon: Icons.arrow_outward_rounded),
@@ -54,8 +61,6 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
       final newIndex = _tabController.index;
       final newMode = _BoardMode.values[newIndex];
       if (_mode != newMode) {
-        // Update state (including _searchQuery) first so the searchController
-        // listener finds the query already empty and skips its own setState.
         setState(() {
           _mode = newMode;
           _searchQuery = '';
@@ -136,19 +141,33 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
                 customIncomeCategories: customIncomeCategories,
                 subcategoriesMap: subcategoriesMap,
               );
-              final filteredCards = _searchQuery.isEmpty
-                  ? allCards
-                  : allCards
-                      .where((c) => c.title
-                          .toLowerCase()
-                          .contains(_searchQuery.toLowerCase()))
-                      .toList(growable: false);
+              final filteredCards = allCards.where((c) {
+                if (_searchQuery.isNotEmpty &&
+                    !c.title.toLowerCase().contains(_searchQuery.toLowerCase())) {
+                  return false;
+                }
+                if (_catFilter == _CategoryFilter.budgetedOnly && c.progress <= 0) {
+                  return false;
+                }
+                if (_catFilter == _CategoryFilter.overBudgetOnly && c.progress < 1.0) {
+                  return false;
+                }
+                return true;
+              }).toList(growable: true);
+
+              if (_catSort == _CategorySort.amountDesc) {
+                filteredCards.sort((a, b) => b.amount.compareTo(a.amount));
+              } else {
+                filteredCards.sort((a, b) => a.title.compareTo(b.title));
+              }
               return _buildModeScrollPane(
                 mode: mode,
                 cards: filteredCards,
                 currency: currency,
                 privacyModeEnabled: privacyModeEnabled,
                 canSetBudget: canSetBudget,
+                accounts: accounts,
+                stats: monthStats,
               );
             }).toList(growable: false),
           ),
@@ -188,7 +207,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            // ── Row 1: month navigation + budget summary ──────────────────
+            // ── Row 1: month navigation + budget summary + search toggle ─
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
@@ -241,24 +260,60 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
                       ],
                     ],
                   ),
+                const SizedBox(width: AppSpacing.xs),
+                _MonthNavButton(
+                  icon: _isSearchOpen
+                      ? Icons.close_rounded
+                      : Icons.search_rounded,
+                  onTap: () {
+                    setState(() {
+                      _isSearchOpen = !_isSearchOpen;
+                      if (!_isSearchOpen) {
+                        _searchQuery = '';
+                        _searchController.clear();
+                      }
+                    });
+                  },
+                ),
               ],
             ),
-            const SizedBox(height: AppSpacing.sm),
 
-            // ── Search bar ────────────────────────────────────────────────
-            AppSearchBar(
-              controller: _searchController,
-              hintText: 'Search ${_modeName(_mode)}...',
-              onChanged: (val) {
-                setState(() {
-                  _searchQuery = val.trim().toLowerCase();
-                });
-              },
-              onClear: () {
-                setState(() {
-                  _searchQuery = '';
-                });
-              },
+            // ── Expandable Search Bar with Fade Transition & Embedded Icon Capsule ──
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOutCubic,
+              alignment: Alignment.topCenter,
+              child: _isSearchOpen
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: AppSpacing.sm),
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 200),
+                        opacity: _isSearchOpen ? 1.0 : 0.0,
+                        child: AppSearchBar(
+                          controller: _searchController,
+                          hintText: 'Search ${_modeName(_mode)}...',
+                          onChanged: (val) {
+                            setState(() {
+                              _searchQuery = val.trim().toLowerCase();
+                            });
+                          },
+                          onClear: () {
+                            setState(() {
+                              _searchQuery = '';
+                            });
+                          },
+                          trailing: FilterSortIconCapsule(
+                            sortIcon: _catSort == _CategorySort.nameAsc
+                                ? Icons.sort_by_alpha_rounded
+                                : Icons.trending_down_rounded,
+                            isFilterActive: _catFilter != _CategoryFilter.all,
+                            onFilterTap: () => _showFilterSheet(context),
+                            onSortTap: () => _showSortSheet(context),
+                          ),
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
             const SizedBox(height: AppSpacing.sm),
 
@@ -267,8 +322,6 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
               tabs: _categoryTabs,
               selected: _mode.index,
               onChanged: (index) {
-                // Update mode + query in one setState, then clear the
-                // controller so its listener finds the query already empty.
                 setState(() {
                   _mode = _BoardMode.values[index];
                   _searchQuery = '';
@@ -284,6 +337,62 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
     );
   }
 
+  Future<void> _showFilterSheet(BuildContext context) async {
+    final chosen = await showSingleSelectSheet<_CategoryFilter>(
+      context: context,
+      title: 'Filter Categories',
+      selectedValue: _catFilter,
+      items: const [
+        FilterSheetItem(
+          value: _CategoryFilter.all,
+          label: 'All Categories',
+          icon: Icons.apps_rounded,
+        ),
+        FilterSheetItem(
+          value: _CategoryFilter.budgetedOnly,
+          label: 'Budgeted Only',
+          icon: Icons.account_balance_wallet_rounded,
+        ),
+        FilterSheetItem(
+          value: _CategoryFilter.overBudgetOnly,
+          label: 'Over Budget Only',
+          icon: Icons.warning_amber_rounded,
+          iconColor: AppColors.danger,
+        ),
+      ],
+    );
+    if (chosen != null && mounted) {
+      setState(() {
+        _catFilter = chosen;
+      });
+    }
+  }
+
+  Future<void> _showSortSheet(BuildContext context) async {
+    final chosen = await showSingleSelectSheet<_CategorySort>(
+      context: context,
+      title: 'Sort Categories',
+      selectedValue: _catSort,
+      items: const [
+        FilterSheetItem(
+          value: _CategorySort.nameAsc,
+          label: 'Alphabetical (A to Z)',
+          icon: Icons.sort_by_alpha_rounded,
+        ),
+        FilterSheetItem(
+          value: _CategorySort.amountDesc,
+          label: 'Amount (High to Low)',
+          icon: Icons.trending_down_rounded,
+        ),
+      ],
+    );
+    if (chosen != null && mounted) {
+      setState(() {
+        _catSort = chosen;
+      });
+    }
+  }
+
   // ── scroll pane ────────────────────────────────────────────────────────────
 
   Widget _buildModeScrollPane({
@@ -292,43 +401,230 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
     required NumberFormat currency,
     required bool privacyModeEnabled,
     required bool canSetBudget,
+    required List<AccountModel> accounts,
+    required ExpenseStats stats,
   }) {
-    // index 0 = action bar, 1..N = category cards
+    final isAccountsMode = mode == _BoardMode.accounts;
+    final totalBalance =
+        accounts.fold<double>(0.0, (sum, a) => sum + a.balance);
+    // Accounts mode includes the Net Worth hero card at index 0
+    final extraCount = isAccountsMode ? 2 : 1;
+
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 130),
-      itemCount: cards.length + 1,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 160),
+      itemCount: cards.length + extraCount,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
+        if (isAccountsMode) {
+          if (index == 0) {
+            return _buildNetWorthCard(
+              totalBalance: totalBalance,
+              expenseTotal: stats.monthTotal,
+              incomeTotal: stats.monthIncomeTotal,
+              currency: currency,
+              masked: privacyModeEnabled,
+            );
+          }
+          if (index == 1) {
+            return _buildActionBar(mode, canSetBudget);
+          }
+          final entry = cards[index - 2];
+          return _buildCategoryCard(entry, mode, currency, privacyModeEnabled);
+        }
+
         if (index == 0) {
           return _buildActionBar(mode, canSetBudget);
         }
         final entry = cards[index - 1];
-        return CategoryListCard(
-          title: entry.title,
-          icon: entry.icon,
-          tone: entry.tone,
-          amount: _displayAmount(
-              entry.amount, entry.amountColor, currency,
-              masked: privacyModeEnabled),
-          progressLabel: entry.progressLabel,
-          progress: entry.progress,
-          isEnabled: entry.isEnabled,
-          onTap: entry.onTap,
-          onToggle: entry.onToggle,
-          amountColor: entry.amountColor,
-          subcategories: entry.subcategories,
-          onAddSubcategory: mode == _BoardMode.accounts
-              ? null
-              : (sub) {
-                  ref.read(appPreferencesControllerProvider).addSubcategory(entry.title, sub);
-                },
-          onRemoveSubcategory: mode == _BoardMode.accounts
-              ? null
-              : (sub) {
-                  ref.read(appPreferencesControllerProvider).removeSubcategory(entry.title, sub);
-                },
-        );
+        return _buildCategoryCard(entry, mode, currency, privacyModeEnabled);
       },
+    );
+  }
+
+  Widget _buildCategoryCard(
+    CategoryGridData entry,
+    _BoardMode mode,
+    NumberFormat currency,
+    bool privacyModeEnabled,
+  ) {
+    return CategoryListCard(
+      title: entry.title,
+      icon: entry.icon,
+      tone: entry.tone,
+      amount: _displayAmount(
+          entry.amount, entry.amountColor, currency,
+          masked: privacyModeEnabled),
+      progressLabel: entry.progressLabel,
+      progress: entry.progress,
+      isEnabled: entry.isEnabled,
+      onTap: entry.onTap,
+      onToggle: entry.onToggle,
+      amountColor: entry.amountColor,
+      subcategories: entry.subcategories,
+      onAddSubcategory: mode == _BoardMode.accounts
+          ? null
+          : (sub) {
+              ref
+                  .read(appPreferencesControllerProvider)
+                  .addSubcategory(entry.title, sub);
+            },
+      onRemoveSubcategory: mode == _BoardMode.accounts
+          ? null
+          : (sub) {
+              ref
+                  .read(appPreferencesControllerProvider)
+                  .removeSubcategory(entry.title, sub);
+            },
+    );
+  }
+
+  // ── Net Worth Hero Card for Accounts Tab ─────────────────────────────────────
+
+  Widget _buildNetWorthCard({
+    required double totalBalance,
+    required double expenseTotal,
+    required double incomeTotal,
+    required NumberFormat currency,
+    required bool masked,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            AppColors.primaryBlue,
+            AppColors.primaryBlueLight,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryBlue.withValues(alpha: 0.28),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Net Worth',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.3,
+            ),
+          ),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              maskAmount(
+                currency.format(totalBalance),
+                masked: masked,
+              ),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.6,
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'EXPENSE',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.8),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          maskAmount(
+                            currency.format(expenseTotal),
+                            masked: masked,
+                          ),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'INCOME',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.8),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          maskAmount(
+                            currency.format(incomeTotal),
+                            masked: masked,
+                          ),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -872,14 +1168,14 @@ class _MonthNavButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.lightBlueBg,
+      color: const Color(0xFFEDE9FE),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(6),
-          child: Icon(icon, color: AppColors.primaryBlue, size: 20),
+          child: Icon(icon, color: AppColors.accentPurple, size: 20),
         ),
       ),
     );

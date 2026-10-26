@@ -1,16 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:xpens/core/theme/app_colors.dart';
-import 'package:xpens/features/accounts/presentation/provider/account_providers.dart';
-import 'package:xpens/features/accounts/data/models/account_model.dart';
-import 'package:xpens/features/categories/presentation/widgets/expense_category.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/core/theme/app_colors.dart';
+import 'package:expensio/features/accounts/presentation/provider/account_providers.dart';
+import 'package:expensio/features/accounts/data/models/account_model.dart';
+import 'package:expensio/features/categories/presentation/widgets/expense_category.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
 import '../../data/models/tag_shorthand_model.dart';
-import 'package:xpens/shared/widgets/app_page_header.dart';
+import 'package:expensio/shared/widgets/universal_top_bar.dart';
 import '../provider/tag_providers.dart';
 
-class TagsScreen extends ConsumerWidget {
+class TagsScreen extends ConsumerStatefulWidget {
   const TagsScreen({super.key});
+
+  @override
+  ConsumerState<TagsScreen> createState() => _TagsScreenState();
+}
+
+class _TagsScreenState extends ConsumerState<TagsScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  bool _isSearchOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      final q = _searchController.text.trim().toLowerCase();
+      if (q != _searchQuery) {
+        setState(() {
+          _searchQuery = q;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   void _showEditor(BuildContext context, WidgetRef ref, [TagShorthandModel? tag]) {
     showModalBottomSheet(
@@ -49,19 +77,55 @@ class TagsScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final tags = ref.watch(tagShorthandControllerProvider);
+    final filteredTags = tags.where((t) {
+      if (_searchQuery.isEmpty) return true;
+      final q = _searchQuery;
+      return t.name.toLowerCase().contains(q) ||
+          (t.categoryName?.toLowerCase().contains(q) ?? false) ||
+          (t.note?.toLowerCase().contains(q) ?? false);
+    }).toList();
 
-    return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
-      appBar: const GradientAppBar(
+    return UniversalScreenScaffold(
+      topBar: UniversalTopBar(
         title: 'Tags & Shorthands',
+        showBackButton: true,
+        itemCount: tags.length,
+        isSearchOpen: _isSearchOpen,
+        onSearchToggle: (open) {
+          setState(() {
+            _isSearchOpen = open;
+            if (!open) {
+              _searchQuery = '';
+              _searchController.clear();
+            }
+          });
+        },
+        searchController: _searchController,
+        searchHint: 'Search tags or shorthands...',
+        onSearchChanged: (val) {
+          setState(() {
+            _searchQuery = val.trim().toLowerCase();
+          });
+        },
+        onSearchClear: () {
+          setState(() {
+            _searchQuery = '';
+          });
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: AppColors.accentPurple,
+        child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+        onPressed: () => _showEditor(context, ref),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 12),
             child: Text(
               'Configure tags that auto-expand into full transactions when typed or chosen.',
               style: TextStyle(
@@ -72,158 +136,147 @@ class TagsScreen extends ConsumerWidget {
             ),
           ),
           const Divider(color: Color(0xFFE2E8F0), height: 1, thickness: 1),
+          Expanded(
+            child: filteredTags.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircleAvatar(
+                            radius: 36,
+                            backgroundColor: Color(0xFFEDE9FE),
+                            child: Icon(Icons.label_outline_rounded, size: 32, color: AppColors.accentPurple),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _searchQuery.isNotEmpty ? 'No tags match your search' : 'No shorthands configured',
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textDark),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _searchQuery.isNotEmpty
+                                ? 'Try searching another tag trigger or name.'
+                                : 'Create tags like ?dinner mapped to Category: Food, Account: Cash, and Amount: 100.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 13, color: AppColors.textMuted, height: 1.4),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                    itemCount: filteredTags.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final tag = filteredTags[index];
+                      final allCategories = [...expenseCategories, ...incomeCategories];
+                      Color categoryColor = AppColors.accentPurple;
+                      IconData categoryIcon = Icons.grid_view_rounded;
+                      if (tag.categoryName != null) {
+                        final match = allCategories.firstWhere(
+                          (c) => c.name == tag.categoryName,
+                          orElse: () => allCategories.first,
+                        );
+                        categoryColor = match.color;
+                        categoryIcon = match.icon;
+                      }
 
-            Expanded(
-              child: tags.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32.0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            CircleAvatar(
-                              radius: 36,
-                              backgroundColor: AppColors.lightBlueBg,
-                              child: const Icon(Icons.label_outline_rounded, size: 32, color: AppColors.primaryBlue),
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'No shorthands configured',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textDark),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Create tags like ?dinner mapped to Category: Food, Account: Cash, and Amount: 100.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 13, color: AppColors.textMuted, height: 1.4),
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: AppColors.cardShadow,
+                              blurRadius: 8,
+                              offset: Offset(0, 2),
                             ),
                           ],
                         ),
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                      itemCount: tags.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final tag = tags[index];
-                        
-                        // Resolve category color and icon for custom tag styling
-                        final allCategories = [...expenseCategories, ...incomeCategories];
-                        Color categoryColor = AppColors.primaryBlue;
-                        IconData categoryIcon = Icons.grid_view_rounded;
-                        if (tag.categoryName != null) {
-                          final match = allCategories.firstWhere(
-                            (c) => c.name == tag.categoryName,
-                            orElse: () => allCategories.first,
-                          );
-                          categoryColor = match.color;
-                          categoryIcon = match.icon;
-                        }
-
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: AppColors.cardShadow,
-                                blurRadius: 8,
-                                offset: Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(20),
-                            child: InkWell(
-                              onTap: () => _showEditor(context, ref, tag),
-                              onLongPress: () => _showDeleteConfirm(context, ref, tag),
-                              child: Container(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                          child: Text(
-                                            '?${tag.name}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w900,
-                                              fontSize: 13,
-                                              color: Color(0xFF475569),
-                                            ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: InkWell(
+                            onTap: () => _showEditor(context, ref, tag),
+                            onLongPress: () => _showDeleteConfirm(context, ref, tag),
+                            child: Container(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFEDE9FE),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          '?${tag.name}',
+                                          style: const TextStyle(
+                                            color: AppColors.accentPurpleDark,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 14,
                                           ),
                                         ),
-                                        const Spacer(),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
-                                          onPressed: () => _showDeleteConfirm(context, ref, tag),
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(),
+                                      ),
+                                      const Spacer(),
+                                      if (tag.amount != null)
+                                        Text(
+                                          '₹${tag.amount!.toStringAsFixed(0)}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 15,
+                                            color: AppColors.textDark,
+                                          ),
                                         ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    // Configured mappings wrap
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children: [
-                                        if (tag.amount != null)
-                                          _buildMappingChip(
-                                            icon: Icons.attach_money_rounded,
-                                            label: '\u20B9${tag.amount!.toStringAsFixed(0)}',
-                                            color: Colors.green,
-                                          ),
-                                        if (tag.accountId != null)
-                                          _buildMappingChip(
-                                            icon: Icons.account_balance_wallet_rounded,
-                                            label: tag.accountId!,
-                                            color: Colors.blueAccent,
-                                          ),
-                                        if (tag.categoryName != null)
-                                          _buildMappingChip(
-                                            icon: categoryIcon,
-                                            label: tag.categoryName!,
-                                            color: categoryColor,
-                                          ),
-                                        if (tag.subcategoryName != null)
-                                          _buildMappingChip(
-                                            icon: Icons.subdirectory_arrow_right_rounded,
-                                            label: tag.subcategoryName!,
-                                            color: Colors.indigo,
-                                          ),
-                                        if (tag.note != null && tag.note!.isNotEmpty)
-                                          _buildMappingChip(
-                                            icon: Icons.notes_rounded,
-                                            label: tag.note!,
-                                            color: Colors.grey,
-                                          ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    children: [
+                                      if (tag.categoryName != null)
+                                        _buildMappingChip(
+                                          icon: categoryIcon,
+                                          label: tag.categoryName!,
+                                          color: categoryColor,
+                                        ),
+                                      if (tag.accountId != null)
+                                        _buildMappingChip(
+                                          icon: Icons.account_balance_wallet_rounded,
+                                          label: tag.accountId!,
+                                          color: Colors.blueAccent,
+                                        ),
+                                      if (tag.subcategoryName != null && tag.subcategoryName!.isNotEmpty)
+                                        _buildMappingChip(
+                                          icon: Icons.subdirectory_arrow_right_rounded,
+                                          label: tag.subcategoryName!,
+                                          color: Colors.indigo,
+                                        ),
+                                      if (tag.note != null && tag.note!.isNotEmpty)
+                                        _buildMappingChip(
+                                          icon: Icons.notes_rounded,
+                                          label: tag.note!,
+                                          color: Colors.grey,
+                                        ),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      floatingActionButton: FloatingActionButton(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: AppColors.primaryBlue,
-        child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
-        onPressed: () => _showEditor(context, ref),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -394,7 +447,7 @@ class _TagShorthandEditorSheetState extends ConsumerState<TagShorthandEditorShee
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.psychology_rounded, size: 16, color: AppColors.primaryBlue),
+                        const Icon(Icons.psychology_rounded, size: 16, color: AppColors.accentPurple),
                         const SizedBox(width: 6),
                         const Text(
                           'Live Expansion Preview',
@@ -432,11 +485,11 @@ class _TagShorthandEditorSheetState extends ConsumerState<TagShorthandEditorShee
                       children: [
                         Container(
                           padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFEDE9FE),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.label_rounded, size: 18, color: AppColors.primaryBlue),
+                          child: const Icon(Icons.label_rounded, size: 18, color: AppColors.accentPurple),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -518,7 +571,7 @@ class _TagShorthandEditorSheetState extends ConsumerState<TagShorthandEditorShee
                 decoration: const InputDecoration(
                   hintText: 'e.g. dinner, uber, tea',
                   prefixText: '?',
-                  prefixStyle: TextStyle(fontWeight: FontWeight.w800, color: AppColors.primaryBlue),
+                  prefixStyle: TextStyle(fontWeight: FontWeight.w800, color: AppColors.accentPurple),
                   contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   isDense: true,
                 ),
@@ -553,7 +606,7 @@ class _TagShorthandEditorSheetState extends ConsumerState<TagShorthandEditorShee
               const Text('Autofill Account (Optional)', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppColors.textSecondary)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: _selectedAccountId,
+                initialValue: _selectedAccountId,
                 decoration: const InputDecoration(
                   contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   isDense: true,
@@ -583,7 +636,7 @@ class _TagShorthandEditorSheetState extends ConsumerState<TagShorthandEditorShee
               const Text('Autofill Category (Optional)', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppColors.textSecondary)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: _selectedCategoryName,
+                initialValue: _selectedCategoryName,
                 decoration: const InputDecoration(
                   contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   isDense: true,
@@ -605,7 +658,7 @@ class _TagShorthandEditorSheetState extends ConsumerState<TagShorthandEditorShee
                 onChanged: (val) {
                   setState(() {
                     _selectedCategoryName = val;
-                    _selectedSubcategoryName = null; // Clear subcategory on change
+                    _selectedSubcategoryName = null;
                   });
                 },
               ),
@@ -633,7 +686,7 @@ class _TagShorthandEditorSheetState extends ConsumerState<TagShorthandEditorShee
                             fontWeight: FontWeight.w700,
                             fontSize: 11,
                           ),
-                          selectedColor: AppColors.primaryBlue,
+                          selectedColor: AppColors.accentPurple,
                           backgroundColor: const Color(0xFFF1F5F9),
                           side: BorderSide.none,
                           shape: const StadiumBorder(),
@@ -669,7 +722,7 @@ class _TagShorthandEditorSheetState extends ConsumerState<TagShorthandEditorShee
                 child: ElevatedButton(
                   onPressed: _save,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
+                    backgroundColor: AppColors.accentPurple,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     padding: const EdgeInsets.symmetric(vertical: 14),

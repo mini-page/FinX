@@ -1,4 +1,4 @@
-# AGENTS.md - XPensa Expense Tracker
+# AGENTS.md - Expensio Expense Tracker
 
 ## 0. Memory File (Read Before Anything Else)
 
@@ -6,7 +6,7 @@ Open **`memory.md`** (repo root) at the start of every session. It contains the 
 
 ## 1. System Overview
 
-XPensa is a cross-platform, offline-first expense tracker built with:
+Expensio is a cross-platform, offline-first Expense tracker built with:
 
 - Flutter for UI
 - Riverpod for state management
@@ -27,119 +27,95 @@ UI -> Provider -> Repository -> DataSource -> Hive
 - Repository is the single abstraction layer.
 - Hive access is allowed only through datasource classes.
 - Providers control all state mutations.
-- All persisted data originates from the `Expense` model.
-- Always import model files directly (e.g. `import 'package:xpens/features/accounts/data/models/account_model.dart';`) when referencing custom model types inside subviews, to prevent missing type errors.
+- All persisted data originates from the model layer.
+- Always import model files directly (e.g. `import 'package:expensio/features/accounts/data/models/account_model.dart';`) when referencing custom model types inside subviews, to prevent missing type errors.
 - Always declare accessed lists or provider outputs (e.g. `final accounts = ref.read(accountListProvider).value ?? [];`) locally inside nested builders (like `StatefulBuilder` or list cell builders), to avoid out-of-scope compiler warnings.
 
-## 3. Current Scope (MVP Only)
+## 3. Current Scope
 
-### Implement Only
+### Implemented Features
 
-- Add expense
-- View expense list
-- Delete expense
-- Basic monthly total
-
-### Do Not Implement Yet
-
-- Accounts system
-- Split bills
-- Recurring subscriptions
-- Authentication
-- Cloud sync
-- Advanced animations
+- Add / Edit / Delete Expenses
+- Expense list with search, filters, month navigation
+- Multi-account / wallet management
+- Categories with monthly and weekly budgets
+- Recurring subscriptions with notifications and price tracking
+- Split bills with settlement system and debt simplification
+- Visual analytics (monthly, category breakdown, trends)
+- Settings: backup/restore, notifications, biometric/PIN lock, theme, import/export
+- Gamification with achievements and streaks
+- AI model layer (Gemini cloud + rule-based local fallback)
+- Smart input: voice, SMS parsing, barcode scanning
+- Push notifications (budget alerts, recurring due)
 
 ## 4. Folder Responsibilities
 
-Primary feature root:
+### lib/features/{feature}/
 
-```text
-lib/features/expense/
+```
+data/
+  models/      Hive-compatible models
+  datasource/  Direct Hive operations
+  repositories/ Repository implementations
+presentation/
+  screens/     Pages
+  widgets/     Reusable UI components
+  provider/    Riverpod state logic
 ```
 
-### data/
+## 5. Data Model Guidelines
 
-- `models/` for Hive-compatible models
-- `datasource/` for direct Hive operations
-- `repositories/` for repository implementations
-
-### domain/
-
-- `entities/` for pure models if needed beyond MVP
-- `usecases/` for minimal business logic
-
-### presentation/
-
-- `screens/` for pages
-- `widgets/` for reusable UI components
-- `provider/` for Riverpod state logic
-
-## 5. Data Model Contract
-
-```dart
-class Expense {
-  final String id;
-  final double amount;
-  final String category;
-  final DateTime date;
-  final String note;
-}
-```
-
-### Constraints
+### Best Practices
 
 - `id` must be a UUID.
 - `amount` must be greater than `0`.
 - `date` must be stored in UTC.
 - Critical fields must not be nullable.
+- Use immutable models (all fields final).
+- Backwards-compatible Hive adapters when adding fields.
 
 ## 6. Hive Rules
 
-- Box name must be `expenses`.
-- Register adapters before app start.
+- Box names are lowercase plural (e.g. `expenses`, `accounts`, `budgets`).
+- Register adapters before app start in `main.dart`.
 - Do not call Hive directly outside datasource classes.
-
-### Required Operations
-
-- `addExpense()`
-- `deleteExpense(id)`
-- `getAllExpenses()`
 
 ## 7. Provider Rules (Riverpod)
 
-### Required Providers
+### Required Patterns
 
-- `expenseListProvider` for `List<Expense>`
-- `expenseControllerProvider` for add and delete logic
-- `statsProvider` for computed totals
+- `ListProvider` for `List<Model>`
+- `ControllerProvider` for add/update/delete logic
+- Derived data belongs in separate providers
 
 ### Constraints
 
 - No async logic inside UI.
 - All mutations must go through the controller provider.
-- Derived data belongs in separate providers.
+- Derived data belongs in separate providers (use `ref.watch`).
 
 ## 8. UI Rules
 
 ### Screens
 
-- `HomeScreen` for list and FAB
-- `AddExpenseScreen` for the input form
-- `StatsScreen` for summary
+- `HomeScreen` for dashboard (balance, month nav, expense list, FAB)
+- `AddExpenseScreen` for input form
+- `StatsScreen` for analytics
+- Feature screens under their feature directory
 
 ### Constraints
 
 - UI handles display and input only.
 - No database access from UI.
 - No business logic in widgets.
+- Keep widgets small and reusable.
+- Avoid widgets over 200 lines; extract sub-widgets.
 
-## 9. Navigation Rules
+## 9. Navigation
 
-- Use a simple `BottomNavigationBar` with 5 tabs.
-- Only 3 screens are active in MVP:
-  - Home
-  - Stats
-  - Categories placeholder
+- `AppShell` with `Drawer` (hamburger menu) for top-level navigation
+- Bottom nav tabs for: Home, Stats, Accounts, Categories, Settings
+- Feature pages pushed via Navigator
 
 ## 10. Execution Flow (Critical)
 
@@ -160,10 +136,11 @@ User taps FAB
 - Prevent empty or invalid values.
 - Handle Hive initialization failure.
 - Return safe defaults such as an empty list.
+- Wrap AI operations in try/catch with `AiModelException`.
 
 ## 12. Performance Rules
 
-- Cache the expense list in provider state.
+- Cache lists in provider state.
 - Avoid repeated Hive reads.
 - Use `ListView.builder`.
 - Avoid full rebuilds where a selector is sufficient.
@@ -186,124 +163,84 @@ User taps FAB
 ## 14. Development Workflow
 
 ```text
-1. Create feature branch
+1. Run gitnexus_impact before editing any symbol
 2. Implement vertical slice
 3. Run flutter pub get (first run or after dependency changes)
-4. Validate via flutter analyze && flutter test
+4. Validate via flutter analyze --no-fatal-infos --no-fatal-warnings
 5. Test via flutter run
 6. Commit small changes
 7. Push to GitHub
 ```
 
-## 15. Immediate Task (Strict)
-
-Build only:
-
-```text
-Add Expense -> Store -> Fetch -> Display -> Delete
-```
-
-Do not expand scope.
-
-## 16. Future Extensions (Locked for Later)
-
-- Firebase sync
-- Authentication
-- Multi-account system
-- Split bills module
-- Recurring transactions
-- Budget goals
-
-## 17. Final Constraint
-
-The system must remain:
-
-- Predictable
-- Modular
-- Replaceable, so Hive can be swapped for Firebase later
-- Maintainable under scaling
-
-```text
-Keep it minimal. Ship fast. Iterate later.
-```
-
-## 18. Commands (Critical for Agent)
+## 15. Commands
 
 ### Get Dependencies
 
-```text
+```
 flutter pub get
 ```
 
 ### Run App
 
-```text
+```
 flutter run
 ```
 
 ### Analyze Code
 
-```text
-flutter analyze
+```
+flutter analyze --no-fatal-infos --no-fatal-warnings
 ```
 
 ### Format Code
 
-```text
+```
 dart format .
 ```
 
 ### Build APK
 
-```text
+```
 flutter build apk
 ```
 
 ### Build App Bundle
 
-```text
+```
 flutter build appbundle
 ```
 
-### Hive Setup
-
-```text
-flutter packages pub run build_runner build
-```
-
-TODO: verify if code generation is still needed; adapters are currently hand-written and `build_runner` is not in `pubspec.yaml`.
-
 ### Run All Tests
 
-```text
+```
 flutter test
 ```
 
 ### Run Single Test
 
-```text
+```
 flutter test test/path/to/test_file.dart
 ```
 
 ### Update Launcher Icons
 
-```text
+```
 flutter pub run flutter_launcher_icons:main
 ```
 
 ### Update Splash Screen
 
-```text
+```
 flutter pub run flutter_native_splash:create
 ```
 
 ### Debug Single File
 
-```text
+```
 flutter analyze lib/path/to/file.dart
 ```
 
-## 19. Coding Rules
+## 16. Coding Rules
 
 ### DO
 
@@ -311,6 +248,9 @@ flutter analyze lib/path/to/file.dart
 - Keep widgets small and reusable.
 - Use the repository pattern strictly.
 - Use `ListView.builder` for lists.
+- Use `AppSpacing` and `AppColors` tokens instead of hardcoded values.
+- Use `formatCurrency()` from `app_formatters.dart` for all money display.
+- Run impact analysis before editing any existing symbol.
 
 ### DO NOT
 
@@ -318,25 +258,30 @@ flutter analyze lib/path/to/file.dart
 - Do not mix business logic in widgets.
 - Do not create large widgets over 200 lines.
 - Do not introduce new dependencies without reason.
+- Do not ignore impact analysis warnings.
 
-## 20. Key Entry Points
+## 17. Key Entry Points
 
 - App start -> `lib/main.dart`
 - Expense feature -> `lib/features/expense/`
-- Providers -> `lib/features/expense/provider/`
-- UI screens -> `lib/features/expense/presentation/screens/`
+- Providers -> `lib/features/*/presentation/provider/`
+- UI screens -> `lib/features/*/presentation/screens/`
 - Hive setup -> `lib/core/utils/`
+- AI model layer -> `lib/core/ai/`
+- Theme & tokens -> `lib/core/theme/`
 
-## 21. Task Templates
+## 18. Task Templates
 
 ### Add New Feature
 
-```text
-1. Create model (data/models)
-2. Create datasource
-3. Create repository
-4. Create provider
-5. Create UI screen
+```
+1. Run gitnexus_impact to understand affected code
+2. Create model (data/models) with Hive adapter
+3. Create datasource
+4. Create repository
+5. Create provider
+6. Create UI screen
+7. Open Hive box in bootstrap (main.dart)
 ```
 
 ### Add UI Component
@@ -344,10 +289,12 @@ flutter analyze lib/path/to/file.dart
 - Create widget in `presentation/widgets`.
 - No logic inside widget.
 - Use provider for state.
+- Use existing theme tokens (AppColors, AppSpacing, AppTextStyles).
 
-## 22. Personal Rules
+## 19. Personal Rules
 
 - Prefer clean architecture.
 - Avoid hacks.
 - Optimize for readability over cleverness.
 - Always handle edge cases.
+- Ship fast, iterate later.

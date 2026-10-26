@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:xpens/core/theme/app_colors.dart';
+import 'package:expensio/core/theme/app_colors.dart';
 import 'app_search_bar.dart';
 
 class AppCurrencyDetails {
@@ -26,13 +26,13 @@ const List<AppCurrencyDetails> richCurrencies = [
   AppCurrencyDetails(symbol: 'د.إ', name: 'UAE Dirham', code: 'AED', country: 'United Arab Emirates', flag: '🇦🇪'),
   AppCurrencyDetails(symbol: '¥', name: 'Japanese Yen', code: 'JPY', country: 'Japan', flag: '🇯🇵'),
   AppCurrencyDetails(symbol: '৳', name: 'Bangladeshi Taka', code: 'BDT', country: 'Bangladesh', flag: '🇧🇩'),
-  AppCurrencyDetails(symbol: 'S\$', name: 'Singapore Dollar', code: 'SGD', country: 'Singapore', flag: '🇸🇬'),
-  AppCurrencyDetails(symbol: 'A\$', name: 'Australian Dollar', code: 'AUD', country: 'Australia', flag: '🇦🇺'),
-  AppCurrencyDetails(symbol: 'C\$', name: 'Canadian Dollar', code: 'CAD', country: 'Canada', flag: '🇨🇦'),
+  AppCurrencyDetails(symbol: r'S$', name: 'Singapore Dollar', code: 'SGD', country: 'Singapore', flag: '🇸🇬'),
+  AppCurrencyDetails(symbol: r'A$', name: 'Australian Dollar', code: 'AUD', country: 'Australia', flag: '🇦🇺'),
+  AppCurrencyDetails(symbol: r'C$', name: 'Canadian Dollar', code: 'CAD', country: 'Canada', flag: '🇨🇦'),
   AppCurrencyDetails(symbol: 'CHF', name: 'Swiss Franc', code: 'CHF', country: 'Switzerland', flag: '🇨🇭'),
   AppCurrencyDetails(symbol: '元', name: 'Chinese Yuan', code: 'CNY', country: 'China', flag: '🇨🇳'),
-  AppCurrencyDetails(symbol: 'HK\$', name: 'Hong Kong Dollar', code: 'HKD', country: 'Hong Kong', flag: '🇭🇰'),
-  AppCurrencyDetails(symbol: 'NZ\$', name: 'New Zealand Dollar', code: 'NZD', country: 'New Zealand', flag: '🇳🇿'),
+  AppCurrencyDetails(symbol: r'HK$', name: 'Hong Kong Dollar', code: 'HKD', country: 'Hong Kong', flag: '🇭🇰'),
+  AppCurrencyDetails(symbol: r'NZ$', name: 'New Zealand Dollar', code: 'NZD', country: 'New Zealand', flag: '🇳🇿'),
   AppCurrencyDetails(symbol: 'kr', name: 'Swedish Krona', code: 'SEK', country: 'Sweden', flag: '🇸🇪'),
   AppCurrencyDetails(symbol: '₩', name: 'South Korean Won', code: 'KRW', country: 'South Korea', flag: '🇰🇷'),
   AppCurrencyDetails(symbol: '₿', name: 'Bitcoin', code: 'BTC', country: 'Crypto', flag: '🪙'),
@@ -42,10 +42,8 @@ Future<String?> showCurrencySelectorSheet(BuildContext context, String currentCu
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-    ),
+    backgroundColor: Colors.transparent,
+    barrierColor: const Color(0x55000000),
     builder: (ctx) {
       return _CurrencySelectorSheet(currentCurrencySymbol: currentCurrencySymbol);
     },
@@ -64,14 +62,18 @@ class _CurrencySelectorSheet extends StatefulWidget {
 class _CurrencySelectorSheetState extends State<_CurrencySelectorSheet> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _isSearchOpen = false;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text.trim().toLowerCase();
-      });
+      final q = _searchController.text.trim().toLowerCase();
+      if (q != _searchQuery) {
+        setState(() {
+          _searchQuery = q;
+        });
+      }
     });
   }
 
@@ -84,186 +86,247 @@ class _CurrencySelectorSheetState extends State<_CurrencySelectorSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
-    
+
     final filtered = richCurrencies.where((c) {
       if (_searchQuery.isEmpty) return true;
       return c.name.toLowerCase().contains(_searchQuery) ||
-             c.code.toLowerCase().contains(_searchQuery) ||
-             c.country.toLowerCase().contains(_searchQuery) ||
-             c.symbol.toLowerCase().contains(_searchQuery);
+          c.code.toLowerCase().contains(_searchQuery) ||
+          c.country.toLowerCase().contains(_searchQuery) ||
+          c.symbol.toLowerCase().contains(_searchQuery);
     }).toList();
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPadding + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Drag Handle
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE2E8F0),
-                borderRadius: BorderRadius.circular(2),
+    return SafeArea(
+      minimum: EdgeInsets.only(bottom: bottomPadding),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1A000000),
+              blurRadius: 32,
+              offset: Offset(0, -4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Top Drag Handle
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textMuted.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Header
-          const Text(
-            'Transaction currency',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textDark,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Set your preferred display currency.',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textMuted,
-            ),
-          ),
-          const SizedBox(height: 16),
 
-          // Search Bar
-          AppSearchBar(
-            controller: _searchController,
-            hintText: 'Search USD, EUR, GBP, BTC...',
-            hasBorder: true,
-          ),
-          const SizedBox(height: 16),
-
-          // Currencies List
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.45,
-            ),
-            child: filtered.isEmpty
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24.0),
-                      child: Text(
-                        'No currencies match your search.',
-                        style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w600),
+            // Header Row: Title on left, Search Icon and '✕' Cross Button on right
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Select Currency',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textDark,
+                        letterSpacing: -0.3,
                       ),
                     ),
-                  )
-                : ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final c = filtered[index];
-                      final isSelected = c.symbol == widget.currentCurrencySymbol;
+                  ),
 
-                      return GestureDetector(
-                        onTap: () => Navigator.pop(context, c.symbol),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: isSelected ? AppColors.primaryBlue.withOpacity(0.04) : Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: isSelected ? AppColors.primaryBlue : const Color(0xFFE2E8F0),
-                              width: isSelected ? 1.5 : 1.0,
+                  // Toggle Search Icon Button (items > 10)
+                  IconButton(
+                    icon: Icon(
+                      _isSearchOpen ? Icons.close_rounded : Icons.search_rounded,
+                      size: 20,
+                      color: _isSearchOpen ? AppColors.accentPurple : AppColors.textDark,
+                    ),
+                    tooltip: 'Toggle Search',
+                    onPressed: () {
+                      setState(() {
+                        _isSearchOpen = !_isSearchOpen;
+                        if (!_isSearchOpen) {
+                          _searchQuery = '';
+                          _searchController.clear();
+                        }
+                      });
+                    },
+                  ),
+
+                  // Cross '✕' Dismiss Button
+                  IconButton(
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: AppColors.textMuted,
+                      size: 20,
+                    ),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+
+            // Expandable Search Bar
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOutCubic,
+              child: _isSearchOpen
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: AppSearchBar(
+                        controller: _searchController,
+                        hintText: 'Search USD, EUR, INR, BTC...',
+                        hasBorder: true,
+                        autoFocus: true,
+                        height: 42,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+
+            // Currencies List
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.48,
+              ),
+              child: filtered.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24.0),
+                        child: Text(
+                          'No currencies match your search.',
+                          style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final c = filtered[index];
+                        final isSelected = c.symbol == widget.currentCurrencySymbol;
+
+                        return GestureDetector(
+                          onTap: () => Navigator.pop(context, c.symbol),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.primaryBlue.withValues(alpha: 0.05)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isSelected ? AppColors.primaryBlue : const Color(0xFFE2E8F0),
+                                width: isSelected ? 1.5 : 1.0,
+                              ),
                             ),
-                          ),
-                          child: Row(
-                            children: [
-                              // Left symbol circle
-                              Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: isSelected ? AppColors.primaryBlue.withOpacity(0.1) : const Color(0xFFF1F5F9),
-                                  shape: BoxShape.circle,
-                                ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  c.symbol,
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w900,
-                                    color: isSelected ? AppColors.primaryBlue : AppColors.textDark,
+                            child: Row(
+                              children: [
+                                // Left symbol circle
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? AppColors.primaryBlue.withValues(alpha: 0.12)
+                                        : const Color(0xFFF1F5F9),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    c.symbol,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w900,
+                                      color: isSelected ? AppColors.primaryBlue : AppColors.textDark,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 14),
+                                const SizedBox(width: 12),
 
-                              // Middle name/country
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                // Middle name/country
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        c.name,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.textDark,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        c.country,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textMuted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                // Right code, flag, checkmark
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     Text(
-                                      c.name,
+                                      c.code,
                                       style: const TextStyle(
-                                        fontSize: 14,
+                                        fontSize: 13,
                                         fontWeight: FontWeight.w800,
                                         color: AppColors.textDark,
                                       ),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      c.country,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.textMuted,
-                                      ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          c.flag,
+                                          style: const TextStyle(fontSize: 16),
+                                        ),
+                                        if (isSelected) ...[
+                                          const SizedBox(width: 6),
+                                          const Icon(
+                                            Icons.check_circle_rounded,
+                                            color: AppColors.primaryBlue,
+                                            size: 16,
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ),
-
-                              // Right code, flag, checkmark
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    c.code,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.textDark,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        c.flag,
-                                        style: const TextStyle(fontSize: 16),
-                                      ),
-                                      if (isSelected) ...[
-                                        const SizedBox(width: 6),
-                                        const Icon(
-                                          Icons.check_circle_rounded,
-                                          color: AppColors.primaryBlue,
-                                          size: 16,
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

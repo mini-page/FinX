@@ -5,7 +5,6 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../tags/presentation/screens/tags_screen.dart';
 import '../../../expense/presentation/screens/voice_entry_screen.dart';
-import '../../../expense/presentation/screens/notifications_screen.dart';
 import '../../../settings/presentation/screens/support_screen.dart';
 import '../../../settings/presentation/screens/settings/permissions_settings_screen.dart';
 import '../../../settings/presentation/screens/settings/ai_settings_screen.dart';
@@ -14,7 +13,9 @@ import 'tools_pages/savings_goals_screen.dart';
 import 'tools_pages/split_bill_screen.dart';
 import 'tools_pages/subscriptions_screen.dart';
 import 'tools_pages/location_map_screen.dart';
-import '../../../../shared/widgets/app_search_bar.dart';
+import 'tools_pages/budgeting_hub_screen.dart';
+import 'package:expensio/features/gamification/presentation/screens/gamification_screen.dart';
+import '../../../../shared/widgets/universal_top_bar.dart';
 
 class _ToolItem {
   const _ToolItem({
@@ -40,14 +41,18 @@ class AccountsScreen extends ConsumerStatefulWidget {
 class _AccountsScreenState extends ConsumerState<AccountsScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _isSearchOpen = false;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text.trim().toLowerCase();
-      });
+      final q = _searchController.text.trim().toLowerCase();
+      if (q != _searchQuery) {
+        setState(() {
+          _searchQuery = q;
+        });
+      }
     });
   }
 
@@ -89,7 +94,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
       ),
       _ToolItem(
         icon: Icons.call_split_rounded,
-        label: 'Split',
+        label: 'Split Bill',
         color: const Color(0xFFF59E0B), // Amber
         onTap: (context) => Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
@@ -104,6 +109,26 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
         onTap: (context) => Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
             builder: (_) => const SavingsGoalsScreen(),
+          ),
+        ),
+      ),
+      _ToolItem(
+        icon: Icons.account_balance_rounded,
+        label: 'Budgeting',
+        color: const Color(0xFF22C55E), // Green
+        onTap: (context) => Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => const BudgetingHubScreen(),
+          ),
+        ),
+      ),
+      _ToolItem(
+        icon: Icons.workspace_premium_rounded,
+        label: 'Gamification',
+        color: const Color(0xFFF59E0B), // Amber
+        onTap: (context) => Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => const GamificationScreen(),
           ),
         ),
       ),
@@ -135,13 +160,13 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
       ),
       _ToolItem(
         icon: Icons.qr_code_rounded,
-        label: 'Pay',
+        label: 'UPI Pay',
         color: const Color(0xFF06B6D4), // Cyan
         onTap: (context) => AppRoutes.pushUpiScanner(context),
       ),
       _ToolItem(
         icon: Icons.mic_rounded,
-        label: 'Voice',
+        label: 'Voice Entry',
         color: const Color(0xFFD946EF), // Fuchsia
         onTap: (context) => showVoiceEntrySheet(context),
       ),
@@ -204,90 +229,58 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
       return t.label.toLowerCase().contains(_searchQuery);
     }).toList();
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Background Gradient matching the mock theme
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Color(0xFFEDE9FE), // Soft Lavender/Purple
-                    Color(0xFFFAF5FF), // Lighter Purple
-                    Colors.white,      // Pure White at bottom
-                  ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: [0.0, 0.25, 0.6],
+    return UniversalScreenScaffold(
+      topBar: UniversalTopBar(
+        title: 'Finance Tools',
+        showBackButton: false,
+        isSearchOpen: _isSearchOpen,
+        onSearchToggle: (open) {
+          setState(() {
+            _isSearchOpen = open;
+            if (!open) {
+              _searchQuery = '';
+              _searchController.clear();
+            }
+          });
+        },
+        itemCount: allTools.length,
+        searchController: _searchController,
+        searchHint: 'Search for tools...',
+        onSearchChanged: (val) {
+          setState(() {
+            _searchQuery = val.trim().toLowerCase();
+          });
+        },
+        onSearchClear: () {
+          setState(() {
+            _searchQuery = '';
+          });
+        },
+      ),
+      body: filteredTools.isEmpty
+          ? const Center(
+              child: Text(
+                'No tools match your search.',
+                style: TextStyle(
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
                 ),
               ),
+            )
+          : GridView.builder(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 160),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                mainAxisSpacing: 24,
+                crossAxisSpacing: 16,
+                childAspectRatio: 0.68,
+              ),
+              itemCount: filteredTools.length,
+              itemBuilder: (context, index) {
+                return _buildGridItem(context, filteredTools[index]);
+              },
             ),
-          ),
-          
-          // Main Body
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header (mock Select Category style)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 24, 20, 16),
-                  child: Center(
-                    child: Text(
-                      'Finance Tools',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textDark,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Search Bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: AppSearchBar(
-                    controller: _searchController,
-                    hintText: 'Search for tools...',
-                  ),
-                ),
-                const SizedBox(height: 28),
-
-                // Grid View / Empty State
-                Expanded(
-                  child: filteredTools.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No tools match your search.',
-                            style: TextStyle(
-                              color: AppColors.textMuted,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        )
-                      : GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 4,
-                            mainAxisSpacing: 24,
-                            crossAxisSpacing: 16,
-                            childAspectRatio: 0.68,
-                          ),
-                          itemCount: filteredTools.length,
-                          itemBuilder: (context, index) {
-                            return _buildGridItem(context, filteredTools[index]);
-                          },
-                        ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 

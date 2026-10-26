@@ -78,7 +78,7 @@ class WidgetSyncService {
   /// recognised string, or `null` if cancelled / unavailable.
   static Future<String?> startVoiceInput() async {
     try {
-      const channel = MethodChannel('app.xpens.finance/widget');
+      const channel = MethodChannel('app.expensio/widget');
       return await channel.invokeMethod<String>('startVoiceInput');
     } catch (e, st) {
       assert(() {

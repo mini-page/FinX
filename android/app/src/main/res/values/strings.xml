@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">XPens</string>
+    <string name="app_name">Expensio</string>
     <string name="widget_qa_description">Quick Finance Actions — add transactions, scan QR, or use voice entry from your home screen.</string>
     <string name="widget_rt_description">Recent Transactions — glance at today\'s or this week\'s transactions right from your home screen.</string>
 </resources>

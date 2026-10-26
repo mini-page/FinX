@@ -8,21 +8,28 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import 'package:xpens/features/accounts/accounts.dart';
+import 'package:expensio/features/accounts/accounts.dart';
+// ignore: unnecessary_import
+import 'package:expensio/features/accounts/data/models/participant_model.dart';
+// ignore: unnecessary_import
+import 'package:expensio/features/accounts/presentation/provider/participant_providers.dart';
 import '../../data/models/expense_model.dart';
 import '../provider/expense_providers.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
-import 'package:xpens/features/categories/presentation/widgets/expense_category.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/categories/presentation/widgets/expense_category.dart';
 import 'add_expense/add_expense_widgets.dart';
 import 'add_expense/amount_expression.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:xpens/features/sms_parser/domain/sms_parser_engine.dart';
-import 'package:xpens/routes/app_routes.dart';
+import 'package:expensio/features/sms_parser/domain/sms_parser_engine.dart';
+import 'package:expensio/routes/app_routes.dart';
 import 'voice_entry_screen.dart';
-import 'package:xpens/features/tags/tags.dart';
+import 'package:expensio/features/tags/tags.dart';
 import '../../../../shared/widgets/currency_selector_sheet.dart';
 import '../../../../shared/widgets/app_search_bar.dart';
+import 'package:expensio/features/recurring/domain/recurrence_parser.dart';
+import 'package:expensio/features/recurring/presentation/widgets/subscription_editor_sheet.dart';
+import 'package:expensio/features/recurring/presentation/provider/recurring_subscription_providers.dart';
 
 class AddExpenseScreen extends ConsumerStatefulWidget {
   const AddExpenseScreen({
@@ -101,6 +108,12 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
   late String _selectedCurrency;
   bool _shorthandExpandedFlash = false;
 
+  // Split configuration state variables
+  List<ParticipantModel> _selectedSplitParticipants = [];
+  String _splitMethod = 'Equal';
+  final Map<String, double> _splitValues = {};
+  String _paidByParticipantId = 'you';
+
   // Visual tips timer variables
   final List<String> _tips = [
     'Add a note...',
@@ -108,11 +121,16 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
     'Type / to choose Category...',
     'Type # to add Tags...',
     'Type + to split bill...',
-    'Type ! to repeat/recurring...',
+    'Type !2week to set recurrence...',
   ];
   int _currentTipIndex = 0;
   late Timer _tipsTimer;
   String _currentHintText = 'Add a note...';
+
+  /// Recurrence parsed from a ! shortcode in the note field.
+  RecurrenceParsed? _pendingRecurrence;
+  /// True once the user has confirmed the recurring setup via the editor sheet.
+  bool _recurringConfirmed = false;
 
   /// True once the user has returned from the UPI app AND confirmed the payment.
   bool _paymentDone = false;
@@ -274,6 +292,77 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
     }
   }
 
+  /// Extracts the `!token` from the note text and parses it.
+  RecurrenceParsed? _extractRecurrenceFromNote(String text) {
+    final tokens = text.split(RegExp(r'\s+'));
+    for (final token in tokens) {
+      if (token.startsWith('!') && token.length > 1) {
+        final parsed = parseRecurrenceToken(token.substring(1));
+        if (parsed != null) return parsed;
+      }
+    }
+    return null;
+  }
+
+  /// Parsed info from a single `+token` in the note field.
+  /// e.g. `+vipul100paid` → name="vipul", amount=100.0, isPaidBy=true
+  static const _paidSuffixes = ['paid', 'pays', 'pay'];
+
+  List<_SplitTokenInfo> _extractSplitTokensFromNote(String text) {
+    final tokens = text.split(RegExp(r'\s+'));
+    final results = <_SplitTokenInfo>[];
+
+    for (final token in tokens) {
+      if (!token.startsWith('+') || token.length <= 1) continue;
+
+      String rest = token.substring(1);
+      if (rest.isEmpty) continue;
+
+      bool isPaidBy = false;
+
+      // Check for paid/pays/pay suffix
+      final lower = rest.toLowerCase();
+      String? matchedSuffix;
+      for (final suffix in _paidSuffixes) {
+        if (lower.endsWith(suffix)) {
+          matchedSuffix = suffix;
+          break;
+        }
+      }
+      if (matchedSuffix != null) {
+        isPaidBy = true;
+        rest = rest.substring(0, rest.length - matchedSuffix.length);
+        if (rest.isEmpty) continue;
+      }
+
+      // Check for trailing digits (exact amount)
+      double? amount;
+      final amountMatch = RegExp(r'^(\D+?)(\d+)$').firstMatch(rest);
+      if (amountMatch != null) {
+        final nameStr = amountMatch.group(1)!;
+        amount = double.tryParse(amountMatch.group(2)!);
+        rest = nameStr;
+      }
+
+      if (rest.isNotEmpty) {
+        results.add(_SplitTokenInfo(
+          name: rest,
+          amount: amount,
+          isPaidBy: isPaidBy,
+        ));
+      }
+    }
+
+    return results;
+  }
+
+  /// Returns a sorted string of participant names for comparison.
+  String _splitParticipantNames(List<ParticipantModel> participants) {
+    final names = participants.map((p) => p.name.toLowerCase()).toList();
+    names.sort();
+    return names.join(',');
+  }
+
   void _onNoteControllerChanged() {
     final text = _noteController.text;
     if (text.isEmpty) {
@@ -286,7 +375,14 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
           });
         }
       });
-      setState(() {});
+      setState(() {
+        _pendingRecurrence = null;
+        _recurringConfirmed = false;
+        _selectedSplitParticipants = [];
+        _splitMethod = 'Equal';
+        _splitValues.clear();
+        _paidByParticipantId = 'you';
+      });
       return;
     }
     _tipsTimer.cancel();
@@ -306,6 +402,85 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
         }
         break;
       }
+    }
+
+    // Detect !token recurrence shortcodes
+    final detectedRecurrence = _extractRecurrenceFromNote(text);
+    if (detectedRecurrence != null && detectedRecurrence != _pendingRecurrence) {
+      setState(() {
+        _pendingRecurrence = detectedRecurrence;
+        _activePreviewChip = 'Recurring';
+        _recurringConfirmed = false;
+      });
+      return;
+    } else if (detectedRecurrence == null && _pendingRecurrence != null) {
+      setState(() {
+        _pendingRecurrence = null;
+        _recurringConfirmed = false;
+      });
+    }
+
+    // Detect +token split shortcodes (e.g. +rahul, +vipul100, +trang50paid)
+    final splitTokens = _extractSplitTokensFromNote(text);
+    if (splitTokens.isNotEmpty) {
+      final participantList = ref.read(participantListProvider).value ?? [];
+
+      // "You" is always the default participant
+      final newParticipants = <ParticipantModel>[
+        ParticipantModel(id: 'you', name: 'You'),
+      ];
+      final newSplitValues = <String, double>{};
+      String? paidById;
+      bool hasExplicitAmounts = false;
+
+      for (final st in splitTokens) {
+        final existing = participantList.where(
+          (p) => p.name.toLowerCase() == st.name.toLowerCase(),
+        ).firstOrNull;
+        final p = existing ?? ParticipantModel.create(name: st.name);
+        newParticipants.add(p);
+
+        if (st.amount != null) {
+          newSplitValues[p.id] = st.amount!;
+          hasExplicitAmounts = true;
+        }
+        if (st.isPaidBy) {
+          paidById = p.id;
+        }
+      }
+
+      final newMethod = hasExplicitAmounts ? 'Exact' : 'Equal';
+      final newPaidBy = paidById ?? 'you';
+
+      // Only apply if state actually changed (avoid infinite loops)
+      final namesChanged = _splitParticipantNames(newParticipants) !=
+          _splitParticipantNames(_selectedSplitParticipants);
+
+      if (namesChanged ||
+          _splitMethod != newMethod ||
+          _paidByParticipantId != newPaidBy) {
+        setState(() {
+          _selectedSplitParticipants = newParticipants;
+          _splitMethod = newMethod;
+          _splitValues.clear();
+          _splitValues.addAll(newSplitValues);
+          _paidByParticipantId = newPaidBy;
+          _activePreviewChip = 'Split';
+        });
+      } else if (_activePreviewChip != 'Split') {
+        setState(() => _activePreviewChip = 'Split');
+      }
+      return;
+    } else if (_selectedSplitParticipants.isNotEmpty) {
+      // All +tokens removed → clear split state
+      setState(() {
+        _selectedSplitParticipants = [];
+        _splitMethod = 'Equal';
+        _splitValues.clear();
+        _paidByParticipantId = 'you';
+        _activePreviewChip = null;
+      });
+      return;
     }
 
     if (text.endsWith('@')) {
@@ -1296,8 +1471,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withOpacity(0.2),
-                      Colors.black.withOpacity(0.5),
+                      Colors.black.withValues(alpha: 0.2),
+                      Colors.black.withValues(alpha: 0.5),
                     ],
                   ),
                 ),
@@ -1315,7 +1490,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.5),
+                        color: Colors.black.withValues(alpha: 0.5),
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white24),
                       ),
@@ -1338,7 +1513,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.redAccent.withOpacity(0.8),
+                        color: Colors.redAccent.withValues(alpha: 0.8),
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white24),
                       ),
@@ -1362,7 +1537,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: Colors.white24),
                   ),
@@ -1985,11 +2160,71 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
   }
 
   Widget _buildSplitPreview() {
+    final amountState = evaluateAmountExpression(_amountExpression);
+    final totalAmount = amountState.amount;
+
+    final shares = <String, double>{};
+    if (_selectedSplitParticipants.isNotEmpty) {
+      if (_splitMethod == 'Equal') {
+        final count = _selectedSplitParticipants.length;
+        final share = totalAmount / (count > 0 ? count : 1);
+        for (final p in _selectedSplitParticipants) {
+          shares[p.id] = share;
+        }
+      } else if (_splitMethod == 'Exact') {
+        // First pass: assign all explicit amounts
+        double explicitSum = 0;
+        for (final p in _selectedSplitParticipants) {
+          final v = _splitValues[p.id];
+          if (v != null) {
+            shares[p.id] = v;
+            explicitSum += v;
+          }
+        }
+        // Second pass: any participant without an explicit amount gets the remainder
+        // (typically "You" when shortcodes like +vipul100 +trang50 are used)
+        final unassigned = _selectedSplitParticipants
+            .where((p) => !_splitValues.containsKey(p.id))
+            .toList();
+        if (unassigned.isNotEmpty) {
+          final remainder =
+              (totalAmount - explicitSum) / unassigned.length;
+          for (final p in unassigned) {
+            shares[p.id] = remainder.clamp(0, double.infinity);
+          }
+        }
+      } else if (_splitMethod == 'Shares') {
+        double totalShares = 0;
+        for (final p in _selectedSplitParticipants) {
+          totalShares += _splitValues[p.id] ?? 1.0;
+        }
+        if (totalShares <= 0) totalShares = 1.0;
+        for (final p in _selectedSplitParticipants) {
+          final pShares = _splitValues[p.id] ?? 1.0;
+          shares[p.id] = (pShares / totalShares) * totalAmount;
+        }
+      } else if (_splitMethod == 'Percentages') {
+        for (final p in _selectedSplitParticipants) {
+          final pct = _splitValues[p.id] ?? 0.0;
+          shares[p.id] = (pct / 100.0) * totalAmount;
+        }
+      }
+    }
+
+    // For display: which participants have auto-calculated (remainder) shares
+    final autoRemainder = _splitMethod == 'Exact'
+        ? _selectedSplitParticipants
+            .where((p) => !_splitValues.containsKey(p.id))
+            .map((p) => p.id)
+            .toSet()
+        : <String>{};
+
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F8FB),
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
@@ -2019,10 +2254,151 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Split bill module will allow you to divide expenses between friends. Tap Configure to edit splits.',
-            style: TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.4),
+          if (_selectedSplitParticipants.isEmpty) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Split bill module will allow you to divide expenses between friends. Tap Configure to edit splits.',
+              style: TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.4),
+            ),
+          ] else ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.splitscreen_rounded, size: 14, color: AppColors.primaryBlue),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Split: $_splitMethod',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primaryBlue,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _buildPaidByBadge(),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _selectedSplitParticipants.length,
+              itemBuilder: (context, idx) {
+                final p = _selectedSplitParticipants[idx];
+                final shareAmount = shares[p.id] ?? 0.0;
+                
+                String valText = '';
+                if (_splitMethod == 'Equal') {
+                  valText = 'Equal share';
+                } else if (_splitMethod == 'Exact') {
+                  final explicit = _splitValues[p.id];
+                  if (explicit != null) {
+                    valText = '₹${explicit.toStringAsFixed(0)} specified';
+                  } else {
+                    valText = 'remainder';
+                  }
+                } else if (_splitMethod == 'Shares') {
+                  valText = '${(_splitValues[p.id] ?? 1.0).toStringAsFixed(0)} shares';
+                } else if (_splitMethod == 'Percentages') {
+                  valText = '${(_splitValues[p.id] ?? 0.0).toStringAsFixed(0)}%';
+                }
+
+                final isRemainder = autoRemainder.contains(p.id);
+
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6.0),
+                  child: Row(
+                    children: [
+                      _ParticipantInitialsAvatar(name: p.name),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p.name,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                            Text(
+                              valText,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isRemainder
+                                    ? const Color(0xFFF97316)
+                                    : AppColors.textMuted,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '₹${shareAmount.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: isRemainder
+                              ? const Color(0xFFF97316)
+                              : AppColors.textDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String? get _paidByName {
+    final payer = _selectedSplitParticipants.cast<ParticipantModel?>().firstWhere(
+      (p) => p?.id == _paidByParticipantId,
+      orElse: () => null,
+    );
+    return payer?.name ?? (_paidByParticipantId == 'you' ? 'You' : null);
+  }
+
+  Widget _buildPaidByBadge() {
+    final payerName = _paidByName;
+    if (payerName == null) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.success.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.person_rounded, size: 14, color: AppColors.success),
+          const SizedBox(width: 6),
+          Text(
+            'Paid by: $payerName',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: AppColors.success,
+            ),
           ),
         ],
       ),
@@ -2070,30 +2446,207 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
     );
   }
 
+  Future<void> _openRecurringEditorSheet() async {
+    // Extract amount and name hints from current state
+    final amountHint = double.tryParse(
+      _amountController.text.replaceAll(RegExp(r'[^\d.]'), ''),
+    );
+    final nameHint = _noteController.text
+        .split(RegExp(r'\s+'))
+        .where((t) => !t.startsWith('!') && !t.startsWith('@') &&
+            !t.startsWith('/') && !t.startsWith('#') && !t.startsWith('+') &&
+            !RegExp(r'^[\d.*+\-/]+$').hasMatch(t))
+        .join(' ')
+        .trim();
+
+    final result = await showSubscriptionEditorSheet(
+      context,
+      initialRecurrence: _pendingRecurrence,
+      initialName: nameHint.isNotEmpty ? nameHint : null,
+      initialAmount: amountHint != null && amountHint > 0 ? amountHint : null,
+    );
+
+    if (!mounted || result == null) return;
+
+    // Save to recurring subscriptions
+    final controller = ref.read(recurringSubscriptionControllerProvider);
+    await controller.saveSubscription(
+      name: result.name,
+      amount: result.amount,
+      nextBillDate: result.nextBillDate,
+      iconKey: result.iconKey,
+      note: result.note,
+      isActive: result.isActive,
+      billingPeriod: result.billingPeriod,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _recurringConfirmed = true;
+      _activePreviewChip = null;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('"${result.name}" saved to Recurring entries.'),
+        backgroundColor: const Color(0xFF4F46E5),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   Widget _buildRecurringPreview() {
+    const indigo = Color(0xFF4F46E5);
+    const indigoBg = Color(0xFFEEF2FF);
+
+    if (_recurringConfirmed) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: indigoBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: indigo.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: indigo,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_rounded, color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Recurring entry saved! Future dates will notify you to confirm or skip.',
+                style: TextStyle(
+                  color: indigo,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_pendingRecurrence != null) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: indigoBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: indigo.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.sync_rounded, color: indigo, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  'Detected: ${_pendingRecurrence!.label}',
+                  style: const TextStyle(
+                    color: indigo,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Add this as a recurring entry? Future transactions will not be recorded automatically — you will be notified on each due date to confirm.',
+              style: TextStyle(
+                color: Color(0xFF4338CA),
+                fontSize: 11,
+                height: 1.4,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _openRecurringEditorSheet,
+                style: FilledButton.styleFrom(
+                  backgroundColor: indigo,
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.add_alert_rounded, size: 16),
+                label: const Text(
+                  'Set up Recurring Entry',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Default state — no recurrence detected yet
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F8FB),
+        color: indigoBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: indigo.withValues(alpha: 0.2)),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Recurring & Repeats',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 14,
-              color: AppColors.textDark,
-            ),
+          const Row(
+            children: [
+              Icon(Icons.repeat_rounded, color: indigo, size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Recurring & Repeats',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                  color: indigo,
+                ),
+              ),
+            ],
           ),
-          SizedBox(height: 8),
-          Text(
-            'Setup monthly subscriptions, scheduled bills, or recurring salary deposits here.',
-            style: TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.4),
+          const SizedBox(height: 8),
+          const Text(
+            'Type !2week, !1month, !12days etc. in the note field to auto-detect, or tap below to set up manually.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF6366F1), height: 1.4, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _openRecurringEditorSheet,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: indigo,
+                side: const BorderSide(color: indigo),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.add_circle_outline_rounded, size: 16),
+              label: const Text(
+                'Add Recurring Entry',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+            ),
           ),
         ],
       ),
@@ -2621,6 +3174,10 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
 
     setState(() => _isSaving = true);
 
+    final hasSplit = _selectedSplitParticipants.isNotEmpty;
+    final splitMethod = hasSplit ? _splitMethod : null;
+    final paidByParticipantId = hasSplit ? _paidByParticipantId : null;
+
     try {
       final controller = ref.read(expenseControllerProvider);
       if (_selectedType == TransactionType.transfer) {
@@ -2662,6 +3219,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
           subcategory: _selectedSubcategory,
           latitude: _locationEnabled ? _latitude : null,
           longitude: _locationEnabled ? _longitude : null,
+          splitMethod: splitMethod,
+          paidByParticipantId: paidByParticipantId,
         );
       } else {
         await controller.addExpense(
@@ -2676,6 +3235,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
           subcategory: _selectedSubcategory,
           latitude: _locationEnabled ? _latitude : null,
           longitude: _locationEnabled ? _longitude : null,
+          splitMethod: splitMethod,
+          paidByParticipantId: paidByParticipantId,
         );
       }
 
@@ -2762,7 +3323,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
       }
     } catch (_) {}
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.any,
         allowMultiple: false,
       );
@@ -2978,6 +3539,17 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
   }
 
   void _showSplitSelectorSheet(BuildContext context) {
+    final amountState = evaluateAmountExpression(_amountExpression);
+    if (amountState.amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter an amount first to split the bill.'),
+          backgroundColor: AppColors.primaryBlue,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2987,8 +3559,32 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
       ),
       builder: (ctx) {
         return _SplitSelectorSheetContent(
-          onConfigured: () {
-            HapticFeedback.lightImpact();
+          totalAmount: amountState.amount,
+          initialParticipants: _selectedSplitParticipants,
+          initialMethod: _splitMethod,
+          initialValues: _splitValues,
+          initialPaidById: _paidByParticipantId,
+          onConfigured: (participants, method, values, paidById) {
+            setState(() {
+              _selectedSplitParticipants = participants;
+              _splitMethod = method;
+              _splitValues.clear();
+              _splitValues.addAll(values);
+              _paidByParticipantId = paidById;
+              
+              // Synchronize note text with +Name tags
+              final baseNote = _noteController.text.replaceAll(RegExp(r'\s*\+\S+'), '').trim();
+              final splitTags = participants
+                  .where((p) => p.id != 'you')
+                  .map((p) => '+${p.name.replaceAll(' ', '')}')
+                  .join(' ');
+              
+              if (splitTags.isNotEmpty) {
+                _noteController.text = baseNote.isEmpty ? splitTags : '$baseNote $splitTags';
+              } else {
+                _noteController.text = baseNote;
+              }
+            });
           },
         );
       },
@@ -3092,7 +3688,7 @@ class _AccountSelectorSheetContentState extends State<_AccountSelectorSheetConte
                           duration: const Duration(milliseconds: 150),
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: isSelected ? AppColors.primaryBlue.withOpacity(0.04) : Colors.white,
+                            color: isSelected ? AppColors.primaryBlue.withValues(alpha: 0.04) : Colors.white,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: isSelected ? AppColors.primaryBlue : const Color(0xFFE2E8F0),
@@ -3105,7 +3701,7 @@ class _AccountSelectorSheetContentState extends State<_AccountSelectorSheetConte
                                 width: 40,
                                 height: 40,
                                 decoration: BoxDecoration(
-                                  color: isSelected ? AppColors.primaryBlue.withOpacity(0.1) : const Color(0xFFF1F5F9),
+                                  color: isSelected ? AppColors.primaryBlue.withValues(alpha: 0.1) : const Color(0xFFF1F5F9),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(
@@ -3331,7 +3927,7 @@ class _CategorySelectorSheetContentState extends State<_CategorySelectorSheetCon
                     return AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       decoration: BoxDecoration(
-                        color: isSelectedCategory ? activeColor.withOpacity(0.04) : Colors.white,
+                        color: isSelectedCategory ? activeColor.withValues(alpha: 0.04) : Colors.white,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: isSelectedCategory ? activeColor : const Color(0xFFE2E8F0),
@@ -3346,7 +3942,7 @@ class _CategorySelectorSheetContentState extends State<_CategorySelectorSheetCon
                               width: 38,
                               height: 38,
                               decoration: BoxDecoration(
-                                color: cat.color.withOpacity(0.15),
+                                color: cat.color.withValues(alpha: 0.15),
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(cat.icon, color: cat.color, size: 18),
@@ -3425,8 +4021,8 @@ class _CategorySelectorSheetContentState extends State<_CategorySelectorSheetCon
                                           fontWeight: FontWeight.w800,
                                           fontSize: 11,
                                         ),
-                                        backgroundColor: activeColor.withOpacity(0.1),
-                                        side: BorderSide(color: activeColor.withOpacity(0.3)),
+                                        backgroundColor: activeColor.withValues(alpha: 0.1),
+                                        side: BorderSide(color: activeColor.withValues(alpha: 0.3)),
                                         shape: const StadiumBorder(),
                                         onSelected: (_) {
                                           widget.onSelected(
@@ -3625,135 +4221,1115 @@ class _TagsSelectorSheetContentState extends State<_TagsSelectorSheetContent> {
 
 class _SplitSelectorSheetContent extends StatefulWidget {
   const _SplitSelectorSheetContent({
+    required this.totalAmount,
+    required this.initialParticipants,
+    required this.initialMethod,
+    required this.initialValues,
+    required this.initialPaidById,
     required this.onConfigured,
   });
 
-  final VoidCallback onConfigured;
+  final double totalAmount;
+  final List<ParticipantModel> initialParticipants;
+  final String initialMethod;
+  final Map<String, double> initialValues;
+  final String initialPaidById;
+  final void Function(List<ParticipantModel>, String, Map<String, double>, String) onConfigured;
 
   @override
   State<_SplitSelectorSheetContent> createState() => _SplitSelectorSheetContentState();
 }
 
-class _SplitSelectorSheetContentState extends State<_SplitSelectorSheetContent> {
-  int _membersCount = 2;
+class _SplitSelectorSheetContentState extends State<_SplitSelectorSheetContent>
+    with SingleTickerProviderStateMixin {
+  final List<ParticipantModel> _selectedParticipants = [];
+  String _method = 'Equal';
+  final Map<String, double> _localValues = {};
+  String _paidById = 'you';
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  final ParticipantModel _youParticipant = ParticipantModel(id: 'you', name: 'You');
+
+  @override
+  void initState() {
+    super.initState();
+    _method = widget.initialMethod;
+    _localValues.addAll(widget.initialValues);
+    _paidById = widget.initialPaidById;
+    if (widget.initialParticipants.isEmpty) {
+      _selectedParticipants.add(_youParticipant);
+    } else {
+      _selectedParticipants.addAll(widget.initialParticipants);
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _showQuickAddDialog() {
+    final nameController = TextEditingController();
+    final nicknameController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return Consumer(
+          builder: (context, ref, _) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.white,
+              title: const Text('Quick Add Friend', style: TextStyle(fontWeight: FontWeight.bold)),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameController,
+                      autofocus: true,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Name *',
+                        hintText: 'e.g. John Doe',
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please enter a name';
+                        }
+                        final normalized = value.trim().toLowerCase();
+                        if (normalized == 'you') {
+                          return 'Name cannot be "You"';
+                        }
+                        final all = ref.read(participantListProvider).value ?? [];
+                        if (all.any((p) => p.name.toLowerCase() == normalized)) {
+                          return 'Name already exists';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: nicknameController,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Optional Nickname',
+                        hintText: 'e.g. Brother',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    if (formKey.currentState?.validate() ?? false) {
+                      final name = nameController.text.trim();
+                      final nickname = nicknameController.text.trim();
+                      final p = ParticipantModel.create(
+                        name: name,
+                        nickname: nickname.isEmpty ? null : nickname,
+                      );
+                      await ref.read(participantListProvider.notifier).saveParticipant(p);
+                      setState(() {
+                        _selectedParticipants.add(p);
+                      });
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    }
+                  },
+                  style: FilledButton.styleFrom(backgroundColor: AppColors.primaryBlue),
+                  child: const Text('Add'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showParticipantOptions(ParticipantModel participant) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.delete_rounded, color: AppColors.danger),
+                title: const Text('Remove from Split', style: TextStyle(fontWeight: FontWeight.w700)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() {
+                    _selectedParticipants.removeWhere((p) => p.id == participant.id);
+                    if (_paidById == participant.id) {
+                      _paidById = _selectedParticipants.isNotEmpty
+                          ? _selectedParticipants.first.id
+                          : 'you';
+                    }
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Map<String, double> _calculateAmounts() {
+    final totalAmount = widget.totalAmount;
+    final count = _selectedParticipants.length;
+    final calculatedAmounts = <String, double>{};
+
+    if (_method == 'Equal') {
+      final share = totalAmount / (count > 0 ? count : 1);
+      for (final p in _selectedParticipants) {
+        calculatedAmounts[p.id] = share;
+      }
+    } else if (_method == 'Exact') {
+      for (final p in _selectedParticipants) {
+        calculatedAmounts[p.id] = _localValues[p.id] ?? 0.0;
+      }
+    } else if (_method == 'Shares') {
+      double totalShares = 0.0;
+      for (final p in _selectedParticipants) {
+        totalShares += _localValues[p.id] ?? 1.0;
+      }
+      if (totalShares <= 0.0) totalShares = 1.0;
+      for (final p in _selectedParticipants) {
+        final sh = _localValues[p.id] ?? 1.0;
+        calculatedAmounts[p.id] = (sh / totalShares) * totalAmount;
+      }
+    } else if (_method == 'Percentages') {
+      for (final p in _selectedParticipants) {
+        final pct = _localValues[p.id] ?? 0.0;
+        calculatedAmounts[p.id] = (pct / 100.0) * totalAmount;
+      }
+    }
+
+    return calculatedAmounts;
+  }
 
   @override
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+    final totalAmount = widget.totalAmount;
+    final calculatedAmounts = _calculateAmounts();
+    final count = _selectedParticipants.length;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPadding + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE2E8F0),
-                borderRadius: BorderRadius.circular(2),
+    double totalInputsSum = 0.0;
+    if (_method == 'Exact') {
+      for (final p in _selectedParticipants) {
+        totalInputsSum += _localValues[p.id] ?? 0.0;
+      }
+    } else if (_method == 'Percentages') {
+      for (final p in _selectedParticipants) {
+        totalInputsSum += _localValues[p.id] ?? 0.0;
+      }
+    } else {
+      totalInputsSum = totalAmount;
+    }
+
+    bool isValid = true;
+    String validationMessage = '';
+    double distributedAmount = 0.0;
+
+    if (_selectedParticipants.isEmpty) {
+      isValid = false;
+      validationMessage = 'Select at least 1 person to split.';
+    } else if (_method == 'Exact') {
+      final diff = totalAmount - totalInputsSum;
+      distributedAmount = totalInputsSum;
+      if (diff.abs() > 0.05) {
+        isValid = false;
+        validationMessage = diff > 0
+            ? '₹${diff.toStringAsFixed(0)} remaining to allocate'
+            : 'Over-allocated by ₹${(-diff).toStringAsFixed(0)}';
+      } else {
+        validationMessage = 'All amounts match the total!';
+      }
+    } else if (_method == 'Percentages') {
+      distributedAmount = totalAmount;
+      final diff = 100.0 - totalInputsSum;
+      if (diff.abs() > 0.05) {
+        isValid = false;
+        validationMessage = diff > 0
+            ? '${diff.toStringAsFixed(0)}% remaining to allocate'
+            : 'Over-allocated by ${(-diff).toStringAsFixed(0)}%';
+      } else {
+        validationMessage = 'Percentages sum to 100%!';
+      }
+    } else {
+      distributedAmount = totalAmount;
+      validationMessage = 'Splitting $_method among ${count == 1 ? "you" : "$count people"}';
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Fixed Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: AppColors.textDark),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  const Spacer(),
+                  const Text(
+                    'Split',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBlue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '₹${totalAmount.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.primaryBlue,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
               ),
             ),
+            const Divider(height: 1, color: Color(0xFFEDF2F7)),
+
+            // Scrollable Content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPadding + 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Search Row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 40,
+                            child: TextField(
+                              controller: _searchController,
+                              textAlignVertical: TextAlignVertical.center,
+                              decoration: InputDecoration(
+                                hintText: 'Search participants...',
+                                hintStyle: const TextStyle(
+                                  color: AppColors.textMuted,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13,
+                                ),
+                                prefixIcon:
+                                    const Icon(Icons.search_rounded, size: 20, color: AppColors.textMuted),
+                                suffixIcon: _searchQuery.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear_rounded, size: 18),
+                                        onPressed: () {
+                                          setState(() {
+                                            _searchQuery = '';
+                                            _searchController.clear();
+                                          });
+                                        },
+                                      )
+                                    : null,
+                                filled: true,
+                                fillColor: const Color(0xFFF4F6FA),
+                                contentPadding:
+                                    const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                              onChanged: (val) {
+                                setState(() {
+                                  _searchQuery = val;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Material(
+                          color: AppColors.primaryBlue,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            onTap: _showQuickAddDialog,
+                            borderRadius: BorderRadius.circular(12),
+                            child: const SizedBox(
+                              width: 40,
+                              height: 40,
+                              child: Icon(Icons.person_add_rounded, color: Colors.white, size: 22),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Horizontal Participant Row
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final participantsState = ref.watch(participantListProvider);
+                        return participantsState.when(
+                          data: (dbList) {
+                            final allPeople = [_youParticipant, ...dbList];
+                            final filtered = allPeople.where((p) {
+                              final query = _searchQuery.toLowerCase();
+                              return p.name.toLowerCase().contains(query) ||
+                                  (p.nickname?.toLowerCase().contains(query) ?? false);
+                            }).toList();
+
+                            if (filtered.isEmpty) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(vertical: 24),
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  'No participants found',
+                                  style:
+                                      TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                                ),
+                              );
+                            }
+
+                            return SizedBox(
+                              height: 90,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: filtered.length,
+                                itemBuilder: (context, idx) {
+                                  final person = filtered[idx];
+                                  final isSelected =
+                                      _selectedParticipants.any((p) => p.id == person.id);
+
+                                  return GestureDetector(
+                                    onTap: () {
+                                      HapticFeedback.lightImpact();
+                                      setState(() {
+                                        if (isSelected) {
+                                          _selectedParticipants
+                                              .removeWhere((p) => p.id == person.id);
+                                          if (_paidById == person.id) {
+                                            _paidById = _selectedParticipants.isNotEmpty
+                                                ? _selectedParticipants.first.id
+                                                : 'you';
+                                          }
+                                        } else {
+                                          _selectedParticipants.add(person);
+                                        }
+                                      });
+                                    },
+                                    onLongPress: () {
+                                      if (person.id != 'you') {
+                                        HapticFeedback.mediumImpact();
+                                        _showParticipantOptions(person);
+                                      }
+                                    },
+                                    child: Container(
+                                      width: 68,
+                                      margin: const EdgeInsets.only(right: 12),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Stack(
+                                            clipBehavior: Clip.none,
+                                            children: [
+                                              _ParticipantInitialsAvatar(
+                                                name: person.name,
+                                                size: 48,
+                                                fontSize: 16,
+                                              ),
+                                              if (isSelected)
+                                                Positioned(
+                                                  right: -2,
+                                                  bottom: -2,
+                                                  child: Container(
+                                                    width: 20,
+                                                    height: 20,
+                                                    decoration: const BoxDecoration(
+                                                      color: AppColors.primaryBlue,
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                    child: const Icon(
+                                                      Icons.check_circle_rounded,
+                                                      color: Colors.white,
+                                                      size: 18,
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            person.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight:
+                                                  isSelected ? FontWeight.w800 : FontWeight.w600,
+                                              color: isSelected
+                                                  ? AppColors.primaryBlue
+                                                  : AppColors.textDark,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            );
+                          },
+                          loading: () => const SizedBox(
+                            height: 90,
+                            child:
+                                Center(child: CircularProgressIndicator(color: AppColors.primaryBlue)),
+                          ),
+                          error: (e, s) => SizedBox(
+                            height: 90,
+                            child: Center(child: Text('Error: $e')),
+                          ),
+                        );
+                      },
+                    ),
+
+                    if (_selectedParticipants.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+
+                      _buildPaidBySelector(),
+
+                      const SizedBox(height: 16),
+
+                      _buildMethodSelector(),
+
+                      const SizedBox(height: 16),
+
+                      const Text(
+                        'Distribution',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ..._selectedParticipants.map((p) {
+                        final shareAmount = calculatedAmounts[p.id] ?? 0.0;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFFF1F5F9)),
+                            ),
+                            child: Row(
+                              children: [
+                                _ParticipantInitialsAvatar(name: p.name, size: 32),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    p.name,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.textDark,
+                                    ),
+                                  ),
+                                ),
+                                _buildAllocationInput(p),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '₹${shareAmount.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.textDark,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+
+                      const SizedBox(height: 12),
+
+                      _buildDistributionSummary(
+                        totalAmount: totalAmount,
+                        distributedAmount: distributedAmount,
+                        isValid: isValid,
+                        validationMessage: validationMessage,
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
+
+                    // Bottom Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              side: const BorderSide(color: Color(0xFFE2E8F0)),
+                            ),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: isValid
+                                ? () {
+                                    HapticFeedback.mediumImpact();
+                                    widget.onConfigured(
+                                        _selectedParticipants, _method, _localValues, _paidById);
+                                    Navigator.pop(context);
+                                  }
+                                : null,
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              backgroundColor: AppColors.primaryBlue,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              disabledBackgroundColor: const Color(0xFFCBD5E1),
+                            ),
+                            child: const Text(
+                              'Confirm Split',
+                              style: TextStyle(fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaidBySelector() {
+    final payer = _selectedParticipants.cast<ParticipantModel?>().firstWhere(
+      (p) => p?.id == _paidById,
+      orElse: () => null,
+    );
+    final payerName = payer?.name ?? (_paidById == 'you' ? 'You' : 'Select');
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: InkWell(
+        onTap: () => _showPaidByPicker(),
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              const Icon(Icons.payments_rounded, size: 18, color: AppColors.success),
+              const SizedBox(width: 10),
+              const Text(
+                'Paid by',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                payerName,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.expand_more_rounded, size: 18, color: AppColors.textMuted),
+            ],
           ),
-          const SizedBox(height: 16),
-          const Text(
-            'Split Bill',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.textDark),
+        ),
+      ),
+    );
+  }
+
+  void _showPaidByPicker() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Who paid the bill?',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ..._selectedParticipants.map((p) {
+                final isSelected = _paidById == p.id;
+                return ListTile(
+                  leading: _ParticipantInitialsAvatar(name: p.name, size: 36),
+                  title: Text(
+                    p.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                  trailing: isSelected
+                      ? const Icon(Icons.check_circle_rounded,
+                          color: AppColors.primaryBlue, size: 22)
+                      : null,
+                  onTap: () {
+                    setState(() {
+                      _paidById = p.id;
+                    });
+                    Navigator.pop(ctx);
+                  },
+                );
+              }).toList(),
+            ],
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Divide this expense between group members or friends.',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 20),
-          
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMethodSelector() {
+    const methods = [
+      {'name': 'Equal', 'icon': Icons.splitscreen_rounded},
+      {'name': 'Exact', 'icon': Icons.pin_rounded},
+      {'name': 'Shares', 'icon': Icons.pie_chart_rounded},
+      {'name': 'Percentages', 'icon': Icons.percent_rounded},
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6FA),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: methods.map((m) {
+          final name = m['name'] as String;
+          final icon = m['icon'] as IconData;
+          final isSelected = _method == name;
+          return Expanded(
+            child: Material(
+              color: isSelected ? Colors.white : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+              elevation: isSelected ? 1 : 0,
+              shadowColor: AppColors.cardShadow,
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    _method = name;
+                  });
+                },
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Center(
+                    child: isSelected
+                        ? Text(
+                            name,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.primaryBlue,
+                            ),
+                          )
+                        : Icon(icon, size: 18, color: AppColors.textMuted),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildDistributionSummary({
+    required double totalAmount,
+    required double distributedAmount,
+    required bool isValid,
+    required String validationMessage,
+  }) {
+    final remaining = totalAmount - distributedAmount;
+    final remainingAbs = remaining.abs();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isValid
+            ? AppColors.primaryBlue.withValues(alpha: 0.04)
+            : AppColors.danger.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isValid
+              ? AppColors.primaryBlue.withValues(alpha: 0.12)
+              : AppColors.danger.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Column(
+        children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Number of Members',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: AppColors.textDark),
+                'Total',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textDark,
+                ),
               ),
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline_rounded, color: AppColors.primaryBlue),
-                    onPressed: _membersCount > 2
-                        ? () {
-                            setState(() {
-                              _membersCount--;
-                            });
-                          }
-                        : null,
-                  ),
-                  Text(
-                    '$_membersCount',
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppColors.textDark),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.primaryBlue),
-                    onPressed: () {
-                      setState(() {
-                        _membersCount++;
-                      });
-                    },
-                  ),
-                ],
+              Text(
+                '₹${totalAmount.toStringAsFixed(0)}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textDark,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Row(
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Distributed',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryBlue,
+                ),
+              ),
+              Text(
+                '₹${distributedAmount.toStringAsFixed(0)}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.primaryBlue,
+                ),
+              ),
+            ],
+          ),
+          if (!isValid && remainingAbs > 0.01) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Icon(Icons.pie_chart_outline_rounded, color: Color(0xFFF97316), size: 24),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Each member will pay: 1/$_membersCount share',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textSecondary,
-                    ),
+                Text(
+                  remaining > 0 ? 'Remaining' : 'Extra',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.danger,
                   ),
+                ),
+                Row(
+                  children: [
+                    if (remaining < 0)
+                      const Text(
+                        '- ',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.danger,
+                        ),
+                      ),
+                    Text(
+                      '₹${remainingAbs.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.danger,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 24),
-
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: FilledButton(
-              onPressed: () {
-                widget.onConfigured();
-                Navigator.pop(context);
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFF97316),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ],
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(
+                isValid
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.info_outline_rounded,
+                size: 14,
+                color: isValid ? AppColors.primaryBlue : AppColors.danger,
               ),
-              child: const Text(
-                'Confirm Split',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  validationMessage,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: isValid ? AppColors.primaryBlue : AppColors.danger,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),
     );
   }
+
+  Widget _buildAllocationInput(ParticipantModel p) {
+    if (_method == 'Equal') {
+      return const SizedBox.shrink();
+    }
+
+    if (_method == 'Exact') {
+      return SizedBox(
+        width: 80,
+        height: 32,
+        child: TextFormField(
+          initialValue: _localValues[p.id]?.toStringAsFixed(0) ?? '',
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          textAlign: TextAlign.right,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          decoration: const InputDecoration(
+            prefixText: '₹',
+            prefixStyle:
+                TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textMuted),
+            contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          onChanged: (val) {
+            setState(() {
+              _localValues[p.id] = double.tryParse(val) ?? 0.0;
+            });
+          },
+        ),
+      );
+    }
+
+    if (_method == 'Shares') {
+      final sharesVal = _localValues[p.id] ?? 1.0;
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: sharesVal > 1.0
+                ? () {
+                    setState(() {
+                      _localValues[p.id] = sharesVal - 1.0;
+                    });
+                  }
+                : null,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: sharesVal > 1.0
+                    ? AppColors.primaryBlue.withValues(alpha: 0.1)
+                    : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.remove_rounded,
+                size: 16,
+                color: sharesVal > 1.0 ? AppColors.primaryBlue : AppColors.textMuted,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            sharesVal.toStringAsFixed(0),
+            style: const TextStyle(
+                fontWeight: FontWeight.w900, fontSize: 13, color: AppColors.textDark),
+          ),
+          const SizedBox(width: 6),
+          InkWell(
+            onTap: () {
+              setState(() {
+                _localValues[p.id] = sharesVal + 1.0;
+              });
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.add_rounded,
+                size: 16,
+                color: AppColors.primaryBlue,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_method == 'Percentages') {
+      return SizedBox(
+        width: 64,
+        height: 32,
+        child: TextFormField(
+          initialValue: _localValues[p.id]?.toStringAsFixed(0) ?? '',
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.right,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          decoration: const InputDecoration(
+            suffixText: '%',
+            suffixStyle:
+                TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textMuted),
+            contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          onChanged: (val) {
+            setState(() {
+              _localValues[p.id] = double.tryParse(val) ?? 0.0;
+            });
+          },
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
 }
 
+class _ParticipantInitialsAvatar extends StatelessWidget {
+  const _ParticipantInitialsAvatar({required this.name, this.size = 32, this.fontSize});
+  final String name;
+  final double size;
+  final double? fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .map((s) => s.isNotEmpty ? s[0].toUpperCase() : '')
+        .take(2)
+        .join();
+
+    final colors = [
+      const Color(0xFF6366F1), // Indigo
+      const Color(0xFF3B82F6), // Blue
+      const Color(0xFF8B5CF6), // Purple
+      const Color(0xFFEC4899), // Pink
+      const Color(0xFF10B981), // Emerald
+      const Color(0xFFF59E0B), // Amber
+    ];
+    final colorIndex = name.hashCode.abs() % colors.length;
+    final backgroundColor = colors[colorIndex];
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: backgroundColor.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+        border: Border.all(color: backgroundColor.withValues(alpha: 0.24), width: 1.0),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initials.isEmpty ? '?' : initials,
+        style: TextStyle(
+          color: backgroundColor,
+          fontSize: fontSize ?? (size * 0.34).clamp(10, 16),
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+/// Parsed info from a single `+token` in the note field.
+/// e.g. `+vipul100paid` → name="vipul", amount=100.0, isPaidBy=true
+class _SplitTokenInfo {
+  const _SplitTokenInfo({
+    required this.name,
+    this.amount,
+    this.isPaidBy = false,
+  });
+
+  final String name;
+  final double? amount;
+  final bool isPaidBy;
+}
 

@@ -99,7 +99,7 @@ class AiSettingsScreen extends ConsumerWidget {
                   trailing: Switch(
                     value: aiEnabled,
                     onChanged: hasKey ? (v) => controller.setAiEnabled(v) : (_) {},
-                    activeColor: AppColors.primaryBlue,
+                    activeThumbColor: AppColors.primaryBlue,
                   ),
                 ),
               ],
@@ -325,7 +325,7 @@ class AiSettingsScreen extends ConsumerWidget {
       trailing: Switch(
         value: value,
         onChanged: onChanged,
-        activeColor: AppColors.primaryBlue,
+        activeThumbColor: AppColors.primaryBlue,
       ),
     );
   }

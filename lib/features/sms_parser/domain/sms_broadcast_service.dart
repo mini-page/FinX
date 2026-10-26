@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 /// Bridges the native Android SMS BroadcastReceiver to the Dart layer.
 ///
 /// The Android side sends messages over the method channel
-/// `app.xpens.finance/sms_receiver` using the method `onSmsReceived`
+/// `app.expensio/sms_receiver` using the method `onSmsReceived`
 /// with a map payload `{sender: String, body: String, timestamp: int}`.
 ///
 /// Call [initialize] once from [main] (after [HiveBootstrap]).  Callers
@@ -14,7 +14,7 @@ class SmsBroadcastService {
   SmsBroadcastService._();
 
   static const MethodChannel _channel =
-      MethodChannel('app.xpens.finance/sms_receiver');
+      MethodChannel('app.expensio/sms_receiver');
 
   static final StreamController<SmsMessage> _controller =
       StreamController<SmsMessage>.broadcast();

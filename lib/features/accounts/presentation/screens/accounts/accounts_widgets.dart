@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import 'package:xpens/core/theme/app_colors.dart';
-import 'package:xpens/core/theme/app_tokens.dart';
-import 'package:xpens/shared/widgets/app_pill_switch.dart';
-import 'package:xpens/features/accounts/data/models/account_model.dart';
-import 'package:xpens/features/accounts/presentation/provider/account_providers.dart';
-import 'package:xpens/features/expense/presentation/provider/expense_providers.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
-import 'package:xpens/features/accounts/presentation/widgets/account_editor_sheet.dart';
-import 'package:xpens/features/accounts/presentation/widgets/account_icons.dart';
-import 'package:xpens/features/expense/presentation/widgets/amount_visibility.dart';
-import 'package:xpens/features/recurring/presentation/widgets/recurring_tool_view.dart';
-import 'package:xpens/features/accounts/presentation/widgets/split_bill_tool_view.dart';
-import 'package:xpens/features/expense/presentation/widgets/ui_feedback.dart';
+import 'package:expensio/core/theme/app_colors.dart';
+import 'package:expensio/core/theme/app_tokens.dart';
+import 'package:expensio/shared/widgets/app_pill_switch.dart';
+import 'package:expensio/features/accounts/data/models/account_model.dart';
+import 'package:expensio/features/accounts/presentation/provider/account_providers.dart';
+import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/accounts/presentation/widgets/account_editor_sheet.dart';
+import 'package:expensio/features/accounts/presentation/widgets/account_icons.dart';
+import 'package:expensio/features/expense/presentation/widgets/amount_visibility.dart';
+import 'package:expensio/features/recurring/presentation/widgets/recurring_tool_view.dart';
+import 'package:expensio/features/accounts/presentation/widgets/split_bill_tool_view.dart';
+import 'package:expensio/features/expense/presentation/widgets/ui_feedback.dart';
 
 /// Tools tab showing split-bill and recurring tools.
 class AccountsToolsTabView extends StatelessWidget {

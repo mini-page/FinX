@@ -10,12 +10,16 @@
     <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
     <!-- Notifications for Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Exact alarms for Workmanager periodic tasks on Android 12+ -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- Foreground service for background work -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <!-- Location tracking for transaction mapping -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
-        android:label="XPens"
+        android:label="Expensio"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -47,7 +51,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="xpens" android:host="widget" />
+                <data android:scheme="expensio" android:host="widget" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
@@ -60,7 +64,7 @@
         <receiver
             android:name=".QuickActionWidget"
             android:exported="true"
-            android:label="XPens Quick Actions">
+            android:label="Expensio Quick Actions">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -73,10 +77,10 @@
         <receiver
             android:name=".RecentTransactionsWidget"
             android:exported="true"
-            android:label="XPens Transactions">
+            android:label="Expensio Transactions">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="app.xpens.finance.ACTION_SET_TXN_FILTER" />
+                <action android:name="app.expensio.ACTION_SET_TXN_FILTER" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

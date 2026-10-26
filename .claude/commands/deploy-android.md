@@ -1,7 +1,7 @@
 # deploy-android — Build & Release for Android
 
 ## Purpose
-Step-by-step guide to building and releasing the XPensa APK or App Bundle for Android.
+Step-by-step guide to building and releasing the Expensioa APK or App Bundle for Android.
 
 ## Prerequisites
 - Flutter SDK installed and on PATH.
@@ -34,15 +34,15 @@ flutter build appbundle --release
 ## Signing Setup
 1. Generate a keystore (one-time):
    ```bash
-   keytool -genkey -v -keystore ~/xpensa-release.jks \
-     -keyalg RSA -keysize 2048 -validity 10000 -alias xpensa
+   keytool -genkey -v -keystore ~/Expensioa-release.jks \
+     -keyalg RSA -keysize 2048 -validity 10000 -alias Expensioa
    ```
 2. Create `android/key.properties` (excluded from git):
    ```
    storePassword=<password>
    keyPassword=<password>
-   keyAlias=xpensa
-   storeFile=<path-to>/xpensa-release.jks
+   keyAlias=Expensioa
+   storeFile=<path-to>/Expensioa-release.jks
    ```
 3. Reference in `android/app/build.gradle` (already configured if set up).
 

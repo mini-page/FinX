@@ -3,7 +3,7 @@
 ## Domain
 Patterns for consuming REST (and optionally GraphQL) APIs in Flutter: client setup, request/response modeling, error handling, retries, and caching.
 
-> **XPensa context:** The app is currently offline-first (Hive). This skill applies when cloud sync, currency rates, or auth endpoints are added.
+> **Expensioa context:** The app is currently offline-first (Hive). This skill applies when cloud sync, currency rates, or auth endpoints are added.
 
 ## Core Concepts
 

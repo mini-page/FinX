@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../../../core/constants/app_assets.dart';
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../routes/app_routes.dart';
-import 'package:xpens/features/accounts/presentation/provider/account_providers.dart';
+import 'package:expensio/features/accounts/presentation/provider/account_providers.dart';
 import '../../provider/expense_providers.dart';
 import '../../widgets/amount_visibility.dart';
 
@@ -137,6 +137,9 @@ class HomeHeader extends StatefulWidget {
     required this.onAmountTap,
     required this.onAmountLongPress,
     required this.onAddAmountTap,
+    required this.selectedMonth,
+    required this.onPreviousMonth,
+    required this.onNextMonth,
   });
 
   final ExpenseStats stats;
@@ -148,6 +151,9 @@ class HomeHeader extends StatefulWidget {
   final ValueChanged<double> onAmountTap;
   final ValueChanged<double> onAmountLongPress;
   final VoidCallback onAddAmountTap;
+  final DateTime selectedMonth;
+  final VoidCallback onPreviousMonth;
+  final VoidCallback onNextMonth;
 
   @override
   State<HomeHeader> createState() => _HomeHeaderState();
@@ -339,6 +345,45 @@ class _HomeHeaderState extends State<HomeHeader> {
                       flex: 5,
                       child: Column(
                         children: [
+                          // Month badge
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              GestureDetector(
+                                onTap: widget.onPreviousMonth,
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.primaryBlue,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 14),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                DateFormat('MMM yyyy').format(widget.selectedMonth),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: widget.onNextMonth,
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.primaryBlue,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 14),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
                           _MetricCard(
                             label: 'Expense',
                             amount: maskAmount(

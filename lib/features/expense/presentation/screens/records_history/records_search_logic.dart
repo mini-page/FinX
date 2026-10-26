@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:xpens/features/accounts/data/models/account_model.dart';
+import 'package:expensio/features/accounts/data/models/account_model.dart';
 import '../../../data/models/expense_model.dart';
 
 /// Evaluates a user-typed search query against an [ExpenseModel].

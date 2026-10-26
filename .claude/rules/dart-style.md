@@ -13,7 +13,7 @@
 | Functions / Variables | `lowerCamelCase` | `totalExpenses` |
 | Constants | `lowerCamelCase` | `kDefaultCurrency` |
 | Private members | `_lowerCamelCase` | `_cache` |
-| Files | `snake_case` | `expense_model.dart` |
+| Files | `snake_case` | `Expense_model.dart` |
 
 - Local variables must **not** have a leading underscore (lint: `no_leading_underscores_for_local_identifiers`).
 
@@ -37,4 +37,4 @@
 ## Imports
 
 - Dart SDK imports first, then package imports, then relative imports.
-- Always import from feature barrels (`package:xpensa/features/<name>/<name>.dart`) rather than deep internal paths.
+- Always import from feature barrels (`package:Expensioa/features/<name>/<name>.dart`) rather than deep internal paths.

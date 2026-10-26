@@ -9,9 +9,9 @@ import '../../../../../core/theme/app_colors.dart';
 import '../../../../../core/theme/app_tokens.dart';
 import '../../../../../routes/app_routes.dart';
 import '../../../expense/data/models/expense_model.dart';
-import 'package:xpens/features/accounts/presentation/provider/account_providers.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
-import 'package:xpens/features/categories/presentation/widgets/expense_category.dart';
+import 'package:expensio/features/accounts/presentation/provider/account_providers.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/categories/presentation/widgets/expense_category.dart';
 import '../../data/sms_queue_item.dart';
 import '../../data/sms_transaction.dart';
 import '../../domain/sms_broadcast_service.dart';
@@ -48,6 +48,7 @@ class _SmsSettingsSheetState extends ConsumerState<SmsSettingsSheet> {
   final TextEditingController _bodyCtrl = TextEditingController();
   bool _showManualEntry = false;
   bool _checkingPermission = false;
+  bool _isScanning = false;
   bool? _permissionGranted;
   StreamSubscription<SmsMessage>? _smsSub;
 
@@ -179,8 +180,10 @@ class _SmsSettingsSheetState extends ConsumerState<SmsSettingsSheet> {
               enabled: enabled,
               permissionGranted: _permissionGranted,
               checking: _checkingPermission,
+              isScanning: _isScanning,
               onChanged: _handleToggle,
               onRequestPermission: _requestPermission,
+              onScanInbox: _scanInboxNow,
             ),
             const SizedBox(height: 20),
 
@@ -241,9 +244,28 @@ class _SmsSettingsSheetState extends ConsumerState<SmsSettingsSheet> {
       }
       await controller.setSmsParsingEnabled(true);
       await SmsMonitoringService.start();
+      await _scanInboxNow();
     } else {
       await controller.setSmsParsingEnabled(false);
       await SmsMonitoringService.stop();
+    }
+  }
+
+  Future<void> _scanInboxNow() async {
+    setState(() => _isScanning = true);
+    final count = await ref.read(smsQueueControllerProvider).scanInbox();
+    if (mounted) {
+      setState(() => _isScanning = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            count > 0
+                ? 'Found $count bank transaction(s) in inbox! Added to Notifications.'
+                : 'Scanned inbox. No new bank transactions found.',
+          ),
+          backgroundColor: count > 0 ? const Color(0xFF7B2FF7) : AppColors.textDark,
+        ),
+      );
     }
   }
 
@@ -337,15 +359,19 @@ class _ToggleCard extends StatelessWidget {
     required this.enabled,
     required this.permissionGranted,
     required this.checking,
+    required this.isScanning,
     required this.onChanged,
     required this.onRequestPermission,
+    required this.onScanInbox,
   });
 
   final bool enabled;
   final bool? permissionGranted;
   final bool checking;
+  final bool isScanning;
   final Future<void> Function(bool) onChanged;
   final Future<bool> Function() onRequestPermission;
+  final VoidCallback onScanInbox;
 
   @override
   Widget build(BuildContext context) {
@@ -391,6 +417,43 @@ class _ToggleCard extends StatelessWidget {
               ),
             ],
           ),
+          if (enabled && permissionGranted == true) ...<Widget>[
+            const SizedBox(height: 14),
+            InkWell(
+              onTap: isScanning ? null : onScanInbox,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7B2FF7).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFF7B2FF7).withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      isScanning ? Icons.sync_rounded : Icons.mark_email_read_rounded,
+                      size: 16,
+                      color: const Color(0xFF7B2FF7),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      isScanning ? 'Scanning Inbox...' : 'Scan SMS Inbox Now',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF7B2FF7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           if (!checking && permissionGranted == false) ...<Widget>[
             const SizedBox(height: 12),
             Container(

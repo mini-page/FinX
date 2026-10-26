@@ -1,6 +1,6 @@
-# Gemini CLI Project Configuration: XPens
+# Gemini CLI Project Configuration: Expensio
 
-You are acting as an expert Senior Flutter Developer and Architect working on the `XPens` application, a premium, modern expense tracker built specifically for Android.
+You are acting as an expert Senior Flutter Developer and Architect working on the `Expensio` application, a premium, modern Expense tracker built specifically for Android.
 
 ## Project Tech Stack
 - **Framework:** Flutter (Dart >= 3.0.0)
@@ -21,11 +21,11 @@ The codebase is structured into self-contained feature directories inside `lib/f
   - `recurring/`: Subscriptions, due date calculations, and recurring tools.
   - `settings/`: App preferences, pin security, biometrics, and database backup controls.
   - `analytics/`: Monthly spending statistics and flow visualization.
-  - `expense/`: Core transaction logging models and transaction list presentation.
+  - `Expense/`: Core transaction logging models and transaction list presentation.
   - `sms_parser/`: Automated transaction extraction from SMS notifications.
-  - `transactions/`: General transactions barrel (add-expense, search, history screens).
+  - `transactions/`: General transactions barrel (add-Expense, search, history screens).
 
-Every feature directory must maintain its clean boundary. Consumers must import via the barrel files (e.g. `import 'package:xpens/features/accounts/accounts.dart'`).
+Every feature directory must maintain its clean boundary. Consumers must import via the barrel files (e.g. `import 'package:Expensio/features/accounts/accounts.dart'`).
 
 ### 2. State Management (Riverpod)
 - Keep all business logic and screen state in Riverpod Notifiers/Providers.
@@ -41,7 +41,7 @@ Every feature directory must maintain its clean boundary. Consumers must import 
 - Keep tests updated under `test/features/` to mirror the features layout.
 
 ### 5. Compiler Error Prevention (Anti-Error Guidelines)
-- **Import Model Types Explicitly**: Under feature-first modular architecture, when referencing model types (e.g. `AccountModel`, `CategoryModel`, `ExpenseModel`, `TagModel`, `RecurringSubscriptionModel`) across feature-specific subviews, always import their source model file directly (e.g. `import 'package:xpens/features/accounts/data/models/account_model.dart';`), rather than relying on indirect barrel or provider imports.
+- **Import Model Types Explicitly**: Under feature-first modular architecture, when referencing model types (e.g. `AccountModel`, `CategoryModel`, `ExpenseModel`, `TagModel`, `RecurringSubscriptionModel`) across feature-specific subviews, always import their source model file directly (e.g. `import 'package:Expensio/features/accounts/data/models/account_model.dart';`), rather than relying on indirect barrel or provider imports.
 - **Declare Local State/Data Variables in Builder Scopes**: When nesting builders (such as `StatefulBuilder`, `ListView.builder`, or bottom sheet context builders) inside screen views, declare all required lists or provider values (e.g., `final accounts = ref.read(accountListProvider).value ?? [];`) locally within the builder's scope. Do not reference variables from out-of-scope widget trees without proper declarations.
 - **Sanity Checks**: Verify that all parameters, variables, and imports added during refactoring are complete and warning-free.
 

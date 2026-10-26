@@ -12,7 +12,7 @@ Before writing any code, open **`memory.md`** (repo root) and read it fully. It 
 - **Run the app**: `flutter run`
 - **Lint code**: `flutter analyze`
 - **Run all tests**: `flutter test`
-- **Run a single test**: `flutter test <path_to_test_file>` (e.g., `flutter test test/features/expense/data/models/expense_model_test.dart`)
+- **Run a single test**: `flutter test <path_to_test_file>` (e.g., `flutter test test/features/Expense/data/models/Expense_model_test.dart`)
 - **Build APK**: `flutter build apk`
 - **Build App Bundle**: `flutter build appbundle`
 - **Update Launcher Icons**: `flutter pub run flutter_launcher_icons:main`
@@ -40,7 +40,7 @@ The project follows a feature-driven, Clean Architecture-inspired structure loca
 ### Local Storage
 - **Hive** is used for persistent local storage.
 - Adapters and boxes are initialized in `lib/core/utils/hive_bootstrap.dart`.
-- Data is stored in feature-specific boxes (e.g., `expenses`, `accounts`, `budgets`).
+- Data is stored in feature-specific boxes (e.g., `Expenses`, `accounts`, `budgets`).
 
 ## 🖋 Coding Standards
 - Follow standard Flutter/Dart lint rules (see `analysis_options.yaml`).

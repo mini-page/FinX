@@ -4,11 +4,12 @@ import 'package:intl/intl.dart';
 
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../core/theme/app_tokens.dart';
-import 'package:xpens/features/expense/data/models/expense_model.dart';
-import 'package:xpens/features/expense/presentation/widgets/amount_visibility.dart';
-import 'package:xpens/features/categories/presentation/widgets/expense_category.dart';
-import 'package:xpens/features/accounts/data/models/account_model.dart';
-import 'package:xpens/features/expense/presentation/widgets/transaction_card.dart';
+import 'package:expensio/features/expense/data/models/expense_model.dart';
+import 'package:expensio/features/expense/presentation/widgets/amount_visibility.dart';
+import 'package:expensio/features/categories/presentation/widgets/expense_category.dart';
+import 'package:expensio/features/accounts/data/models/account_model.dart';
+import 'package:expensio/features/expense/presentation/widgets/transaction_card.dart';
+import 'package:expensio/shared/widgets/app_filter_sheet.dart';
 
 // ---------------------------------------------------------------------------
 // Data models (unchanged)
@@ -1148,6 +1149,46 @@ String _compactCurrency(double value, NumberFormat format) {
 
 /// Renders the range picker modal bottom sheet
 Future<String?> showStatsRangePicker(BuildContext context, String currentRange) async {
+  return await showSingleSelectSheet<String>(
+    context: context,
+    title: 'Select Period',
+    selectedValue: currentRange,
+    items: const <FilterSheetItem<String>>[
+      FilterSheetItem(
+        value: 'This Week',
+        label: 'This Week',
+        icon: Icons.calendar_view_week_rounded,
+        iconColor: Color(0xFF8B5CF6),
+      ),
+      FilterSheetItem(
+        value: 'Last 2 Weeks',
+        label: 'Last 2 Weeks',
+        icon: Icons.date_range_rounded,
+        iconColor: Color(0xFF06B6D4),
+      ),
+      FilterSheetItem(
+        value: 'This Month',
+        label: 'This Month',
+        icon: Icons.calendar_month_rounded,
+        iconColor: AppColors.primaryBlue,
+      ),
+      FilterSheetItem(
+        value: 'This Year',
+        label: 'This Year',
+        icon: Icons.calendar_today_rounded,
+        iconColor: Color(0xFFEC4899),
+      ),
+      FilterSheetItem(
+        value: 'All Time',
+        label: 'All Time',
+        icon: Icons.all_inclusive_rounded,
+        iconColor: Color(0xFF10B981),
+      ),
+    ],
+  );
+}
+
+/*
   final rangeOptions = <String>[
     'This Week',
     'Last 2 Weeks',
@@ -1202,6 +1243,8 @@ Future<String?> showStatsRangePicker(BuildContext context, String currentRange) 
     },
   );
 }
+
+*/
 
 /// Renders the mockup summary cards (Income, Expenses, Net Flow, Savings Rate)
 class StatsSummaryCards extends StatelessWidget {

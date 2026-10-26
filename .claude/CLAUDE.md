@@ -1,6 +1,6 @@
-# CLAUDE.md — XPensa Global Instructions
+# CLAUDE.md — Expensioa Global Instructions
 
-XPensa is a Flutter-based personal finance app targeting **Android** and **Web** (SPA).
+Expensioa is a Flutter-based personal finance app targeting **Android** and **Web** (SPA).
 It uses **Riverpod** for state management, **Hive** for local persistence, and follows
 a **feature-driven Clean Architecture** layout under `lib/features/`.
 
@@ -63,7 +63,7 @@ always import from the barrel, not from internal paths.
 
 ## Local Storage
 
-- **Hive** boxes: `expenses`, `accounts`, `budgets`, `preferences`, `recurringSubscriptions`.
+- **Hive** boxes: `Expenses`, `accounts`, `budgets`, `preferences`, `recurringSubscriptions`.
 - Adapters and box initialization live in `lib/core/utils/hive_bootstrap.dart`.
 - Models implement `HiveObject` and use generated TypeAdapters (`.g.dart`).
 

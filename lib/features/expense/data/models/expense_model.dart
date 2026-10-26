@@ -44,6 +44,8 @@ class ExpenseModel {
     this.subcategory,
     this.latitude,
     this.longitude,
+    this.splitMethod,
+    this.paidByParticipantId,
   }) : date = date.toUtc() {
     if (id.isEmpty) {
       throw ArgumentError.value(id, 'id', 'Expense id cannot be empty.');
@@ -75,6 +77,8 @@ class ExpenseModel {
     String? subcategory,
     double? latitude,
     double? longitude,
+    String? splitMethod,
+    String? paidByParticipantId,
   }) {
     return ExpenseModel(
       id: const Uuid().v4(),
@@ -89,6 +93,8 @@ class ExpenseModel {
       subcategory: subcategory?.trim().isEmpty ?? true ? null : subcategory?.trim(),
       latitude: latitude,
       longitude: longitude,
+      splitMethod: splitMethod,
+      paidByParticipantId: paidByParticipantId,
     );
   }
 
@@ -105,6 +111,8 @@ class ExpenseModel {
   final String? subcategory;
   final double? latitude;
   final double? longitude;
+  final String? splitMethod;
+  final String? paidByParticipantId;
 
   bool get isIncome => type == TransactionType.income;
 
@@ -135,6 +143,10 @@ class ExpenseModel {
     bool clearLatitude = false,
     double? longitude,
     bool clearLongitude = false,
+    String? splitMethod,
+    bool clearSplitMethod = false,
+    String? paidByParticipantId,
+    bool clearPaidByParticipantId = false,
   }) {
     return ExpenseModel(
       id: id ?? this.id,
@@ -148,6 +160,8 @@ class ExpenseModel {
       subcategory: clearSubcategory ? null : subcategory ?? this.subcategory,
       latitude: clearLatitude ? null : latitude ?? this.latitude,
       longitude: clearLongitude ? null : longitude ?? this.longitude,
+      splitMethod: clearSplitMethod ? null : splitMethod ?? this.splitMethod,
+      paidByParticipantId: clearPaidByParticipantId ? null : paidByParticipantId ?? this.paidByParticipantId,
     );
   }
 }
@@ -235,6 +249,22 @@ class ExpenseModelAdapter extends TypeAdapter<ExpenseModel> {
       }
     }
 
+    String? splitMethod;
+    try {
+      final stored = reader.readString();
+      splitMethod = stored.isEmpty ? null : stored;
+    } catch (_) {
+      splitMethod = null;
+    }
+
+    String? paidByParticipantId;
+    try {
+      final stored = reader.readString();
+      paidByParticipantId = stored.isEmpty ? null : stored;
+    } catch (_) {
+      paidByParticipantId = null;
+    }
+
     return ExpenseModel(
       id: id,
       amount: amount,
@@ -247,6 +277,8 @@ class ExpenseModelAdapter extends TypeAdapter<ExpenseModel> {
       subcategory: subcategory,
       latitude: latitude,
       longitude: longitude,
+      splitMethod: splitMethod,
+      paidByParticipantId: paidByParticipantId,
     );
   }
 
@@ -263,7 +295,9 @@ class ExpenseModelAdapter extends TypeAdapter<ExpenseModel> {
       ..writeString(obj.type.storageValue)
       ..writeString(obj.toAccountId ?? '')
       ..writeString(obj.subcategory ?? '')
-      ..writeBool(hasLocation);
+      ..writeBool(hasLocation)
+      ..writeString(obj.splitMethod ?? '')
+      ..writeString(obj.paidByParticipantId ?? '');
 
     if (hasLocation) {
       writer

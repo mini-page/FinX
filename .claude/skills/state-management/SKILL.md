@@ -30,13 +30,13 @@ Need a stream (e.g. real-time DB updates)?
 class ExpenseList extends _$ExpenseList {
   @override
   Future<List<ExpenseModel>> build() async {
-    final repo = ref.watch(expenseRepositoryProvider);
+    final repo = ref.watch(ExpenseRepositoryProvider);
     return repo.getAllExpenses();
   }
 
-  Future<void> addExpense(ExpenseModel expense) async {
-    final repo = ref.read(expenseRepositoryProvider);
-    await repo.addExpense(expense);
+  Future<void> addExpense(ExpenseModel Expense) async {
+    final repo = ref.read(ExpenseRepositoryProvider);
+    await repo.addExpense(Expense);
     ref.invalidateSelf(); // triggers build() to re-fetch
   }
 }
@@ -44,16 +44,16 @@ class ExpenseList extends _$ExpenseList {
 
 ### Derived State with Provider
 ```dart
-final expenseStatsProvider = Provider<ExpenseStats>((ref) {
-  final expenses = ref.watch(expenseListProvider).valueOrNull ?? [];
-  return ExpenseStats.fromExpenses(expenses);
+final ExpenseStatsProvider = Provider<ExpenseStats>((ref) {
+  final Expenses = ref.watch(ExpenseListProvider).valueOrNull ?? [];
+  return ExpenseStats.fromExpenses(Expenses);
 });
 ```
 
 ### Scoped Rebuilds with select
 ```dart
 // Only rebuilds when totalExpense changes, not on any state mutation:
-final total = ref.watch(expenseStatsProvider.select((s) => s.totalExpense));
+final total = ref.watch(ExpenseStatsProvider.select((s) => s.totalExpense));
 ```
 
 ### Side-Effects with listen
@@ -67,13 +67,13 @@ ref.listen<AsyncValue<void>>(saveExpenseProvider, (_, next) {
 
 ### Testing
 ```dart
-test('adds expense and invalidates list', () async {
+test('adds Expense and invalidates list', () async {
   final container = ProviderContainer(overrides: [
-    expenseRepositoryProvider.overrideWith(() => FakeExpenseRepository()),
+    ExpenseRepositoryProvider.overrideWith(() => FakeExpenseRepository()),
   ]);
-  final notifier = container.read(expenseListProvider.notifier);
+  final notifier = container.read(ExpenseListProvider.notifier);
   await notifier.addExpense(testExpense);
-  final state = await container.read(expenseListProvider.future);
+  final state = await container.read(ExpenseListProvider.future);
   expect(state, contains(testExpense));
 });
 ```

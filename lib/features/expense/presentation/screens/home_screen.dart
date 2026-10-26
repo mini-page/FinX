@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_tokens.dart';
 import '../../../../routes/app_routes.dart';
-import 'package:xpens/features/accounts/data/models/account_model.dart';
+import 'package:expensio/features/accounts/data/models/account_model.dart';
 import '../../data/models/expense_model.dart';
-import 'package:xpens/features/accounts/presentation/provider/account_providers.dart';
+import 'package:expensio/features/accounts/presentation/provider/account_providers.dart';
 import '../provider/expense_providers.dart';
 import '../provider/notifications_provider.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/ui_feedback.dart';
 import 'home/home_date_strip.dart';
@@ -25,6 +26,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   late DateTime _selectedDate;
   late DateTime _windowStart;
+  late DateTime _selectedMonth;
 
   @override
   void initState() {
@@ -32,6 +34,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final today = DateUtils.dateOnly(DateTime.now());
     _selectedDate = today;
     _windowStart = today.subtract(const Duration(days: 3));
+    _selectedMonth = DateTime(today.year, today.month);
   }
 
   @override
@@ -41,7 +44,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final accounts =
         ref.watch(accountListProvider).value ?? const <AccountModel>[];
     final accountsMap = {for (final a in accounts) a.id: a};
-    final stats = ref.watch(statsProvider);
+    final monthStats = ExpenseStats.fromExpenses(
+      expenses,
+      forMonth: _selectedMonth,
+    );
     final accountSummary = ref.watch(accountSummaryProvider);
     final privacyModeEnabled = ref.watch(privacyModeEnabledProvider);
 
@@ -89,13 +95,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // ── Everything below scrolls ──────────────────────────────────────
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 100),
+            padding: const EdgeInsets.only(bottom: 170),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 // Blue hero card (balance, metrics)
                 HomeHeader(
-                  stats: stats,
+                  stats: monthStats,
                   accountSummary: accountSummary,
                   currencyFormat: currencyFormat,
                   privacyModeEnabled: privacyModeEnabled,
@@ -124,11 +130,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     customAmounts: customAmounts,
                     quickAmounts: quickAmounts,
                   ),
+                  selectedMonth: _selectedMonth,
+                  onPreviousMonth: () {
+                    setState(() {
+                      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1);
+                    });
+                  },
+                  onNextMonth: () {
+                    setState(() {
+                      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
+                    });
+                  },
                 ),
 
                 // ── Scrollable content ────────────────────────────────────
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 10, AppSpacing.lg, 0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
@@ -375,7 +392,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.xxl)),
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.fromLTRB(
@@ -457,7 +474,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final action = await showModalBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.xxl)),
       ),
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -531,7 +548,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.xxl)),
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.fromLTRB(

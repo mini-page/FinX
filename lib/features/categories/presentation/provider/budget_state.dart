@@ -4,9 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/datasource/month_budget_local_datasource.dart';
-import 'package:xpens/features/expense/data/models/expense_model.dart';
+import 'package:expensio/features/expense/data/models/expense_model.dart';
 import 'budget_providers.dart';
-import 'package:xpens/features/expense/presentation/provider/expense_providers.dart';
+import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 

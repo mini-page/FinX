@@ -11,12 +11,13 @@ import '../../../../routes/app_routes.dart';
 import '../../../../shared/widgets/floating_nav_bar.dart';
 import '../../data/models/expense_model.dart';
 import '../provider/expense_providers.dart';
-import 'package:xpens/features/settings/settings.dart';
+import 'package:expensio/features/settings/settings.dart';
 import '../widgets/power_pill_menu.dart';
-import 'package:xpens/features/accounts/accounts.dart';
-import 'package:xpens/features/categories/presentation/screens/categories_screen.dart';
+import 'package:expensio/features/accounts/accounts.dart';
+import 'package:expensio/features/categories/presentation/screens/categories_screen.dart';
+import '../provider/notifications_provider.dart';
 import 'home_screen.dart';
-import 'package:xpens/features/analytics/presentation/screens/stats_screen.dart';
+import 'package:expensio/features/analytics/presentation/screens/stats_screen.dart';
 import 'voice_entry_screen.dart';
 import '../../../sms_parser/presentation/screens/sms_settings_sheet.dart';
 import '../../../sms_parser/domain/sms_parser_engine.dart';
@@ -232,6 +233,25 @@ class _AppShellState extends ConsumerState<AppShell> {
       },
     );
 
+    // ── Dispatch system notifications for new in-app alerts ──
+    final notificationsEnabled = ref.watch(notificationsEnabledProvider);
+    ref.listen<List<AppNotificationItem>>(
+      notificationsProvider,
+      (_, notifications) {
+        dispatchSystemNotifications(notifications,
+            enabled: notificationsEnabled);
+      },
+    );
+
+    final isHome = _selectedIndex == 0;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    // When on Home, FAB stays visible: moves down to safe area when navbar is hidden,
+    // or sits neatly above floating navbar with a clear gap when navbar is visible.
+    final double fabBottom = isHome
+        ? (_navBarVisible ? (bottomInset + 104.0) : (bottomInset + 20.0))
+        : -100.0;
+    final double fabOpacity = isHome ? 1.0 : 0.0;
+
     return Scaffold(
       extendBody: true,
       body: Stack(
@@ -243,13 +263,13 @@ class _AppShellState extends ConsumerState<AppShell> {
             },
             child: IndexedStack(index: _selectedIndex, children: pages),
           ),
-          // Bottom Gradient Overlay for Navbar Contrast
+          // Bottom Gradient Overlay for Navbar Contrast (slides out with navbar)
           AnimatedPositioned(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutCubic,
             left: 0,
             right: 0,
-            bottom: _navBarVisible ? 0 : -100,
+            bottom: _navBarVisible ? 0 : -130,
             height: 120,
             child: IgnorePointer(
               child: Container(
@@ -267,17 +287,17 @@ class _AppShellState extends ConsumerState<AppShell> {
               ),
             ),
           ),
-          // Power FAB — direct add expense (slides away and fades out when not on Home or when nav bar is hidden)
+          // Power FAB — stays visible on Home (moves down smoothly when navbar auto-hides)
           AnimatedPositioned(
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeOutCubic,
             right: 16,
-            bottom: (_selectedIndex == 0 && _navBarVisible) ? 96 : -100,
+            bottom: fabBottom,
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 200),
-              opacity: (_selectedIndex == 0 && _navBarVisible) ? 1.0 : 0.0,
+              opacity: fabOpacity,
               child: IgnorePointer(
-                ignoring: _selectedIndex != 0 || !_navBarVisible,
+                ignoring: !isHome,
                 child: PowerFab(
                   onQuickAdd: _openAddExpenseScreen,
                 ),
@@ -290,7 +310,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             curve: Curves.easeOutCubic,
             left: 0,
             right: 0,
-            bottom: _navBarVisible ? 0 : -100,
+            bottom: _navBarVisible ? 0 : -130,
             child: FloatingNavBar(
               selectedIndex: _selectedIndex,
               onTap: (index) {
@@ -323,7 +343,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   /// Handles a widget-click URI emitted by [HomeWidget.widgetClicked] or
   /// returned by [HomeWidget.initiallyLaunchedFromHomeWidget].
   ///
-  /// Expected URI format: `xpens://widget?action=<action>`
+  /// Expected URI format: `expensio://widget?action=<action>`
   void _handleWidgetUri(Uri? uri) {
     if (uri == null || !mounted) return;
     _routeWidgetAction(uri);

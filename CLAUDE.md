@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **FinX** (604 symbols, 590 relationships, 0 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **Expensio** (622 symbols, 607 relationships, 0 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -24,10 +24,10 @@ This project is indexed by GitNexus as **FinX** (604 symbols, 590 relationships,
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/FinX/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/FinX/clusters` | All functional areas |
-| `gitnexus://repo/FinX/processes` | All execution flows |
-| `gitnexus://repo/FinX/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/Expensio/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/Expensio/clusters` | All functional areas |
+| `gitnexus://repo/Expensio/processes` | All execution flows |
+| `gitnexus://repo/Expensio/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 

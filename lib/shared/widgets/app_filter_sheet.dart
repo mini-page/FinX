@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_tokens.dart';
+import 'app_search_bar.dart';
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -95,7 +96,7 @@ class _SheetSurface extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadii.hero),
+        borderRadius: BorderRadius.circular(AppRadii.xxl),
         boxShadow: const <BoxShadow>[
           BoxShadow(
             color: AppColors.cardShadow,
@@ -124,36 +125,12 @@ class _SheetSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return AppSearchBar(
+      controller: controller,
+      hintText: hint,
       height: 44,
-      decoration: BoxDecoration(
-        color: AppColors.backgroundLight,
-        borderRadius: BorderRadius.circular(AppRadii.md),
-      ),
-      child: TextField(
-        controller: controller,
-        style: const TextStyle(
-          fontSize: 14,
-          color: AppColors.textDark,
-          fontWeight: FontWeight.w600,
-        ),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(
-            color: AppColors.textMuted,
-            fontWeight: FontWeight.w500,
-            fontSize: 14,
-          ),
-          prefixIcon: const Icon(
-            Icons.search_rounded,
-            color: AppColors.primaryBlue,
-            size: 20,
-          ),
-          border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-        ),
-      ),
+      hasBorder: true,
+      contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
     );
   }
 }

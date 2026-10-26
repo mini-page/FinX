@@ -1,10 +1,10 @@
 /// Application-wide constants shared across the app.
 abstract final class AppConstants {
   /// The current app version string.  Keep in sync with pubspec.yaml.
-  static const String version = '2.1.0';
+  static const String version = '3.0.0';
 
   /// Display name shown on the about dialog and in the drawer footer.
-  static const String appName = 'XPens';
+  static const String appName = 'Expensio';
 
   /// Supported currency options (symbol → display label).
   static const List<({String symbol, String label})> currencies = [

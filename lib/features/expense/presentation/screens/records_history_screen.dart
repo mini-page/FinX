@@ -10,14 +10,13 @@ import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/utils/context_extensions.dart';
 import '../../../../core/utils/tag_parser.dart';
 import '../../../../routes/app_routes.dart';
-import '../../../../shared/widgets/app_page_header.dart';
 import '../../../../shared/widgets/app_filter_sheet.dart';
-import '../../../../shared/widgets/app_search_bar.dart';
-import 'package:xpens/features/accounts/accounts.dart';
+import '../../../../shared/widgets/universal_top_bar.dart';
+import 'package:expensio/features/accounts/accounts.dart';
 import '../../data/models/expense_model.dart';
 import '../provider/expense_providers.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
-import 'package:xpens/features/categories/presentation/widgets/expense_category.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/categories/presentation/widgets/expense_category.dart';
 import '../widgets/ui_feedback.dart';
 import 'records_history/records_cards.dart';
 import 'records_history/records_expense_list.dart';
@@ -41,7 +40,7 @@ class RecordsHistoryScreen extends ConsumerStatefulWidget {
 
   /// When `true`, the search bar is automatically focused on mount and the
   /// soft keyboard is raised — replicating the old TransactionSearchScreen
-  /// entry point.  When `false` (default), the screen opens as the normal
+  /// entry point. When `false` (default), the screen opens as the normal
   /// records browser.
   final bool autoFocusSearch;
 
@@ -59,6 +58,7 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
   String _tagFilter = '';
   _SortOrder _sortOrder = _SortOrder.newest;
   DateTimeRange? _customDateRange;
+  bool _isSearchOpen = false;
 
   late final TextEditingController _searchController;
   late final FocusNode _searchFocusNode;
@@ -73,6 +73,7 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
       _tagFilter = widget.initialTagFilter!;
     }
     if (widget.autoFocusSearch) {
+      _isSearchOpen = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _searchFocusNode.requestFocus();
       });
@@ -84,6 +85,32 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  String _sortOrderLabel(_SortOrder order) {
+    switch (order) {
+      case _SortOrder.newest:
+        return 'Newest';
+      case _SortOrder.oldest:
+        return 'Oldest';
+      case _SortOrder.amountDesc:
+        return 'Amount ↓';
+      case _SortOrder.amountAsc:
+        return 'Amount ↑';
+    }
+  }
+
+  IconData _sortOrderIcon(_SortOrder order) {
+    switch (order) {
+      case _SortOrder.newest:
+        return Icons.arrow_downward_rounded;
+      case _SortOrder.oldest:
+        return Icons.arrow_upward_rounded;
+      case _SortOrder.amountDesc:
+        return Icons.trending_down_rounded;
+      case _SortOrder.amountAsc:
+        return Icons.trending_up_rounded;
+    }
   }
 
   @override
@@ -109,22 +136,30 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
       (sum, expense) => sum + expense.signedAmount,
     );
 
-    return Scaffold(
-      appBar: GradientAppBar(
+    return UniversalScreenScaffold(
+      topBar: UniversalTopBar(
         title: widget.autoFocusSearch ? 'Search' : 'Records',
+        isSearchOpen: _isSearchOpen,
+        onSearchToggle: (open) {
+          setState(() {
+            _isSearchOpen = open;
+            if (!open) {
+              _searchQuery = '';
+              _searchController.clear();
+            }
+          });
+        },
+        alwaysShowSearch: true,
+        searchController: _searchController,
+        searchHint: widget.autoFocusSearch
+            ? 'e.g. coffee OR food, NOT rent…'
+            : 'Search records…',
+        onSearchChanged: (value) => setState(() => _searchQuery = value),
+        onSearchClear: () {
+          _searchController.clear();
+          setState(() => _searchQuery = '');
+        },
         actions: [
-          // Sort button
-          IconButton(
-            icon: Icon(
-              Icons.sort_rounded,
-              color: _sortOrder != _SortOrder.newest
-                  ? AppColors.primaryBlue
-                  : AppColors.textDark,
-            ),
-            tooltip: 'Sort',
-            onPressed: () => _showSortSheet(context),
-          ),
-          // CSV export
           IconButton(
             icon: const Icon(Icons.download_rounded, color: AppColors.textDark),
             tooltip: 'Export CSV',
@@ -132,126 +167,118 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
                 _exportCsv(context, filteredExpenses, locale, currencySymbol),
           ),
         ],
+        filterLabel: _selectedCategoryFilters.isNotEmpty
+            ? '${_selectedCategoryFilters.length} Cats'
+            : (_selectedAccountFilter != _allAccountsKey ? 'Account' : 'Filter'),
+        isFilterActive: _selectedCategoryFilters.isNotEmpty ||
+            _selectedAccountFilter != _allAccountsKey,
+        onFilterTap: () => _showCategorySheet(context, allCategories),
+        sortLabel: _sortOrderLabel(_sortOrder),
+        sortIcon: _sortOrderIcon(_sortOrder),
+        onSortTap: () => _showSortSheet(context),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              // ── Search bar ──────────────────────────────────────────────────
-              _RecordsSearchBar(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                hasText: _searchQuery.isNotEmpty,
-                hint: widget.autoFocusSearch
-                    ? 'e.g. coffee OR food, NOT rent…'
-                    : 'Search records…',
-                onChanged: (value) => setState(() => _searchQuery = value),
-                onClear: () {
-                  _searchController.clear();
-                  setState(() => _searchQuery = '');
-                },
-              ),
-              const SizedBox(height: 14),
-              // ── Summary card ─────────────────────────────────────────────────
-              RecordsSummaryCard(
-                filteredTotal: filteredTotal,
-                transactionCount: filteredExpenses.length,
-                currency: currency,
-                privacyModeEnabled: privacyModeEnabled,
-              ),
-              const SizedBox(height: 14),
-              // ── Date / type filter chips ──────────────────────────────────────
-              RecordsFilterChips(
-                selectedFilter: _selectedFilter,
-                onFilterSelected: (filter) {
-                  setState(() {
-                    _selectedFilter = filter;
-                    if (filter != RecordsFilter.custom) {
-                      _customDateRange = null;
-                    }
-                  });
-                },
-                labelForFilter: _labelForFilter,
-                onCustomDateRange: () => _pickCustomDateRange(context),
-                customDateRange: _customDateRange,
-              ),
-              const SizedBox(height: 10),
-              // ── Account + Category + Tag row ─────────────────────────────────
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _FilterPill(
-                      icon: Icons.account_balance_wallet_outlined,
-                      label: _accountFilterLabel(accountMap),
-                      isActive: _selectedAccountFilter != _allAccountsKey,
-                      onTap: () => _showAccountSheet(context, accounts),
-                    ),
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            // ── Summary card ─────────────────────────────────────────────────
+            RecordsSummaryCard(
+              filteredTotal: filteredTotal,
+              transactionCount: filteredExpenses.length,
+              currency: currency,
+              privacyModeEnabled: privacyModeEnabled,
+            ),
+            const SizedBox(height: 14),
+            // ── Date / type filter chips ──────────────────────────────────────
+            RecordsFilterChips(
+              selectedFilter: _selectedFilter,
+              onFilterSelected: (filter) {
+                setState(() {
+                  _selectedFilter = filter;
+                  if (filter != RecordsFilter.custom) {
+                    _customDateRange = null;
+                  }
+                });
+              },
+              labelForFilter: _labelForFilter,
+              onCustomDateRange: () => _pickCustomDateRange(context),
+              customDateRange: _customDateRange,
+            ),
+            const SizedBox(height: 10),
+            // ── Account + Category + Tag row ─────────────────────────────────
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _FilterPill(
+                    icon: Icons.account_balance_wallet_outlined,
+                    label: _accountFilterLabel(accountMap),
+                    isActive: _selectedAccountFilter != _allAccountsKey,
+                    onTap: () => _showAccountSheet(context, accounts),
+                  ),
+                  const SizedBox(width: 10),
+                  _FilterPill(
+                    icon: Icons.category_outlined,
+                    label: _selectedCategoryFilters.isEmpty
+                        ? 'Category'
+                        : _selectedCategoryFilters.length == 1
+                            ? _selectedCategoryFilters.first
+                            : '${_selectedCategoryFilters.length} categories',
+                    isActive: _selectedCategoryFilters.isNotEmpty,
+                    onTap: () => _showCategorySheet(context, allCategories),
+                  ),
+                  if (_tagFilter.isNotEmpty) ...[
                     const SizedBox(width: 10),
-                    _FilterPill(
-                      icon: Icons.category_outlined,
-                      label: _selectedCategoryFilters.isEmpty
-                          ? 'Category'
-                          : _selectedCategoryFilters.length == 1
-                              ? _selectedCategoryFilters.first
-                              : '${_selectedCategoryFilters.length} categories',
-                      isActive: _selectedCategoryFilters.isNotEmpty,
-                      onTap: () => _showCategorySheet(context, allCategories),
-                    ),
-                    if (_tagFilter.isNotEmpty) ...[
-                      const SizedBox(width: 10),
-                      InputChip(
-                        label: Text('#$_tagFilter'),
-                        deleteIcon: const Icon(Icons.close, size: 16),
-                        onDeleted: () => setState(() => _tagFilter = ''),
-                        selected: true,
-                        backgroundColor:
-                            AppColors.primaryBlue.withValues(alpha: 0.1),
-                        labelStyle: const TextStyle(
-                          color: AppColors.primaryBlue,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppRadii.pill),
-                        ),
-                        side: BorderSide(
-                          color: AppColors.primaryBlue.withValues(alpha: 0.24),
-                        ),
+                    InputChip(
+                      label: Text('#$_tagFilter'),
+                      deleteIcon: const Icon(Icons.close, size: 16),
+                      onDeleted: () => setState(() => _tagFilter = ''),
+                      selected: true,
+                      backgroundColor:
+                          AppColors.primaryBlue.withValues(alpha: 0.1),
+                      labelStyle: const TextStyle(
+                        color: AppColors.primaryBlue,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
                       ),
-                    ],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadii.pill),
+                      ),
+                      side: BorderSide(
+                        color: AppColors.primaryBlue.withValues(alpha: 0.24),
+                      ),
+                    ),
                   ],
-                ),
+                ],
               ),
-              const SizedBox(height: 14),
-              // ── Transaction list ─────────────────────────────────────────────
-              Expanded(
-                child: expenseState.hasError
-                    ? const RecordsStateCard(
-                        title: 'Unable to load records',
-                        message:
-                            'The transaction history is not available right now.',
-                      )
-                    : expenseState.isLoading && expenses.isEmpty
-                        ? const Center(child: CircularProgressIndicator())
-                        : filteredExpenses.isEmpty
-                            ? _buildEmptyState()
-                            : RecordsExpenseList(
-                                groupedExpenses: groupedExpenses,
-                                accounts: accounts,
-                                privacyModeEnabled: privacyModeEnabled,
-                                groupLabel: _groupLabel,
-                                accountLabelFor: _accountLabelFor,
-                                onEdit: (expense) =>
-                                    _openEditExpenseScreen(context, expense),
-                                onDelete: (expense) => _confirmDeleteExpense(
-                                    context, ref, expense),
-                              ),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 14),
+            // ── Transaction list ─────────────────────────────────────────────
+            Expanded(
+              child: expenseState.hasError
+                  ? const RecordsStateCard(
+                      title: 'Unable to load records',
+                      message:
+                          'The transaction history is not available right now.',
+                    )
+                  : expenseState.isLoading && expenses.isEmpty
+                      ? const Center(child: CircularProgressIndicator())
+                      : filteredExpenses.isEmpty
+                          ? _buildEmptyState()
+                          : RecordsExpenseList(
+                              groupedExpenses: groupedExpenses,
+                              accounts: accounts,
+                              privacyModeEnabled: privacyModeEnabled,
+                              groupLabel: _groupLabel,
+                              accountLabelFor: _accountLabelFor,
+                              onEdit: (expense) =>
+                                  _openEditExpenseScreen(context, expense),
+                              onDelete: (expense) => _confirmDeleteExpense(
+                                  context, ref, expense),
+                            ),
+            ),
+          ],
         ),
       ),
     );
@@ -614,9 +641,11 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
       buffer.writeln('$date,$type,$category,$note,$amount,$tags');
     }
 
-    await Share.share(
-      buffer.toString(),
-      subject: 'XPens Transactions Export',
+    await SharePlus.instance.share(
+      ShareParams(
+        text: buffer.toString(),
+        subject: 'XPens Transactions Export',
+      ),
     );
   }
 
@@ -625,36 +654,6 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
       return '"${value.replaceAll('"', '""')}"';
     }
     return value;
-  }
-}
-
-/// Styled search bar used in both browse and search modes.
-class _RecordsSearchBar extends StatelessWidget {
-  const _RecordsSearchBar({
-    required this.controller,
-    required this.focusNode,
-    required this.hasText,
-    required this.hint,
-    required this.onChanged,
-    required this.onClear,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final bool hasText;
-  final String hint;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppSearchBar(
-      controller: controller,
-      focusNode: focusNode,
-      hintText: hint,
-      onChanged: onChanged,
-      onClear: onClear,
-    );
   }
 }
 

@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
+import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import 'package:xpens/core/theme/app_colors.dart';
-import 'package:xpens/core/theme/app_tokens.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
-import 'package:xpens/shared/widgets/app_search_bar.dart';
+import 'package:expensio/core/theme/app_colors.dart';
+import 'package:expensio/core/theme/app_tokens.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/shared/widgets/app_search_bar.dart';
+import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
+import 'package:expensio/features/accounts/presentation/provider/participant_providers.dart';
+import 'package:expensio/features/accounts/presentation/provider/settlement_providers.dart';
+import 'package:expensio/features/accounts/data/models/participant_model.dart';
+import 'package:expensio/features/accounts/data/models/settlement_model.dart';
+import 'package:expensio/features/expense/presentation/widgets/ui_feedback.dart';
 
 class SplitBillToolView extends ConsumerStatefulWidget {
   const SplitBillToolView({super.key});
@@ -183,8 +190,67 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
     });
   }
 
-  void _applySplit() {
-    // Show success dialog and reset
+  Future<void> _applySplit() async {
+    final totalAmount = double.tryParse(_amountController.text) ?? 0;
+    if (totalAmount <= 0) return;
+
+    final perPersonEqual = totalAmount / _activeSplitMembers.length;
+    final currency = ref.read(currencyFormatProvider);
+    final symbol = ref.read(currencySymbolProvider);
+    final now = DateTime.now();
+
+    // Get or create participants
+    final existingParticipants = ref.read(participantListProvider).value ?? [];
+    final nameToId = <String, String>{
+      for (final p in existingParticipants) p.name.toLowerCase(): p.id,
+    };
+
+    String getOrCreateId(String name) {
+      if (name == 'You') return 'you';
+      final key = name.trim().toLowerCase();
+      if (nameToId.containsKey(key)) return nameToId[key]!;
+      // Create on the fly
+      final newParticipant = ParticipantModel.create(name: name.trim());
+      ref.read(participantListProvider.notifier).saveParticipant(newParticipant);
+      nameToId[key] = newParticipant.id;
+      return newParticipant.id;
+    }
+
+    // Create expense
+    final paidById = getOrCreateId(_whoPaid);
+    final note = 'Split: ${_activeSplitMembers.join(", ")}';
+
+    await ref.read(expenseControllerProvider).addExpense(
+          amount: totalAmount,
+          category: 'Social',
+          date: now,
+          note: note,
+        );
+
+    // Create settlement records for each non-payer
+    for (final member in _activeSplitMembers) {
+      if (member == _whoPaid) continue;
+      final share = _splitMethod == 'Equal'
+          ? perPersonEqual
+          : (_exactAmounts[member] ?? 0);
+      if (share <= 0) continue;
+
+      final fromId = getOrCreateId(member);
+      final toId = paidById;
+
+      await ref.read(settlementControllerProvider).createSettlement(
+            fromParticipantId: fromId,
+            fromParticipantName: member,
+            toParticipantId: toId,
+            toParticipantName: _whoPaid,
+            amount: share,
+            expenseDescription: 'Split expense of ${symbol}${currency.format(totalAmount)}',
+          );
+    }
+
+    if (!context.mounted) return;
+
+    // Show success dialog
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -199,7 +265,7 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
           ],
         ),
         content: Text(
-          'Expense of ${ref.read(currencyFormatProvider).format(double.tryParse(_amountController.text) ?? 0)} has been split among ${_activeSplitMembers.length} people.',
+          'Expense of ${currency.format(totalAmount)} split among ${_activeSplitMembers.length} people.\nSettlement records created for ${_activeSplitMembers.length - 1} participant(s).',
         ),
         actions: [
           FilledButton(
@@ -894,6 +960,9 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
               ),
             ),
           ),
+
+          const SizedBox(height: 24),
+          _PendingDebtsSection(),
         ],
       ),
     );
@@ -925,6 +994,537 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
         else
           _buildMainSplitView(),
       ],
+    );
+  }
+}
+
+// ── Pending Debts Section ─────────────────────────────────────────────────────
+
+class _PendingDebtsSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pending = ref.watch(pendingSettlementsProvider);
+    final suggestions = ref.watch(settlementSuggestionsProvider);
+    final balances = ref.watch(participantBalancesProvider);
+    final currency = ref.watch(currencyFormatProvider);
+
+    if (pending.isEmpty && suggestions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.account_balance_rounded, size: 18, color: AppColors.textDark),
+            const SizedBox(width: 8),
+            Text(
+              'Pending Debts',
+              style: TextStyle(
+                color: AppColors.textDark,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.danger.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${pending.length}',
+                style: TextStyle(
+                  color: AppColors.danger,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Per-person balances
+        ...balances.entries.map((entry) {
+          final isPositive = entry.value > 0;
+          final name = _participantName(ref, entry.key);
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: isPositive
+                      ? AppColors.success.withValues(alpha: 0.1)
+                      : AppColors.danger.withValues(alpha: 0.1),
+                  child: Text(
+                    name[0].toUpperCase(),
+                    style: TextStyle(
+                      color: isPositive ? AppColors.success : AppColors.danger,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => _openPersonDetail(context, ref, entry.key, name),
+                  child: Text(
+                    '${isPositive ? '+' : ''}${currency.format(entry.value)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                      color: isPositive ? AppColors.success : AppColors.danger,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.textMuted),
+              ],
+            ),
+          );
+        }),
+
+        // Settlement suggestions
+        if (suggestions.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.primaryBlue.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              border: Border.all(
+                color: AppColors.primaryBlue.withValues(alpha: 0.15),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.lightbulb_outline_rounded,
+                        size: 16, color: AppColors.primaryBlue),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Settlement Suggestions',
+                      style: TextStyle(
+                        color: AppColors.primaryBlue,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ...suggestions.map((s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${s.fromName} → ${s.toName}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        currency.format(s.amount),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: () async {
+                          await ref.read(settlementControllerProvider)
+                              .createSettlementFromSuggestion(s);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Recorded: ${s.fromName} owes ${currency.format(s.amount)} to ${s.toName}'),
+                                backgroundColor: AppColors.textDark,
+                              ),
+                            );
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.success,
+                            borderRadius: BorderRadius.circular(AppRadii.pill),
+                          ),
+                          child: const Text(
+                            'Record',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  String _participantName(WidgetRef ref, String id) {
+    if (id == 'you') return 'You';
+    final participants = ref.read(participantListProvider).value ?? [];
+    final p = participants.where((p) => p.id == id).firstOrNull;
+    return p?.name ?? id;
+  }
+
+  void _openPersonDetail(BuildContext context, WidgetRef ref, String participantId, String name) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _PersonSettlementScreen(
+          participantId: participantId,
+          participantName: name,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Person Settlement Detail Screen ───────────────────────────────────────────
+
+class _PersonSettlementScreen extends ConsumerWidget {
+  const _PersonSettlementScreen({
+    required this.participantId,
+    required this.participantName,
+  });
+
+  final String participantId;
+  final String participantName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settlements = ref.watch(settlementListProvider).value ?? [];
+    final currency = ref.watch(currencyFormatProvider);
+
+    final pending = settlements.where((s) =>
+        !s.isSettled &&
+        (s.fromParticipantId == participantId || s.toParticipantId == participantId)).toList();
+    final settled = settlements.where((s) =>
+        s.isSettled &&
+        (s.fromParticipantId == participantId || s.toParticipantId == participantId)).toList();
+
+    double netBalance = 0;
+    for (final s in pending) {
+      if (s.fromParticipantId == participantId) netBalance -= s.amount;
+      if (s.toParticipantId == participantId) netBalance += s.amount;
+    }
+
+    return Scaffold(
+      backgroundColor: AppColors.backgroundLight,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: GestureDetector(
+          onTap: () => Navigator.of(context).pop(),
+          child: Container(
+            margin: const EdgeInsets.only(left: 8),
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8, offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: const Icon(Icons.chevron_left_rounded,
+                color: AppColors.textDark, size: 22),
+          ),
+        ),
+        title: Text(
+          participantName,
+          style: const TextStyle(
+            color: AppColors.textDark,
+            fontWeight: FontWeight.w900,
+            fontSize: 18,
+          ),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+        children: [
+          // Balance card
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 14, offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Text(
+                  'Net Balance',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${netBalance >= 0 ? '+' : ''}${currency.format(netBalance)}',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    color: netBalance >= 0 ? AppColors.success : AppColors.danger,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  netBalance >= 0
+                      ? '${participantName} is owed this amount'
+                      : '${participantName} owes this amount',
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Pending settlements
+          if (pending.isNotEmpty) ...[
+            Text(
+              'Pending (${pending.length})',
+              style: const TextStyle(
+                color: AppColors.textDark,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...pending.map((s) => _SettlementTile(
+              settlement: s,
+              isIncoming: s.toParticipantId == participantId,
+              currency: currency,
+              onSettle: () => ref.read(settlementControllerProvider).markSettled(s.id),
+            )),
+            const SizedBox(height: 20),
+          ],
+
+          // Settled history
+          if (settled.isNotEmpty) ...[
+            Text(
+              'Settled History',
+              style: const TextStyle(
+                color: AppColors.textDark,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...settled.map((s) => _SettlementTile(
+              settlement: s,
+              isIncoming: s.toParticipantId == participantId,
+              currency: currency,
+              showSettleButton: false,
+            )),
+          ],
+
+          if (pending.isEmpty && settled.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 40),
+              child: Center(
+                child: Text(
+                  'No settlement records yet.',
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Settlement Tile ───────────────────────────────────────────────────────────
+
+class _SettlementTile extends StatelessWidget {
+  const _SettlementTile({
+    required this.settlement,
+    required this.isIncoming,
+    required this.currency,
+    this.onSettle,
+    this.showSettleButton = true,
+  });
+
+  final SettlementModel settlement;
+  final bool isIncoming;
+  final NumberFormat currency;
+  final VoidCallback? onSettle;
+  final bool showSettleButton;
+
+  @override
+  Widget build(BuildContext context) {
+    final otherName = isIncoming
+        ? settlement.fromParticipantName
+        : settlement.toParticipantName;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: isIncoming
+                ? AppColors.success.withValues(alpha: 0.1)
+                : AppColors.danger.withValues(alpha: 0.1),
+            child: Icon(
+              isIncoming
+                  ? Icons.arrow_downward_rounded
+                  : Icons.arrow_upward_rounded,
+              size: 16,
+              color: isIncoming ? AppColors.success : AppColors.danger,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isIncoming ? '$otherName → You' : 'You → $otherName',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                if (settlement.expenseDescription != null)
+                  Text(
+                    settlement.expenseDescription!,
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                Text(
+                  DateFormat('d MMM yyyy').format(settlement.createdAt),
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${isIncoming ? '+' : '-'}${currency.format(settlement.amount)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                  color: isIncoming ? AppColors.success : AppColors.danger,
+                ),
+              ),
+              if (settlement.isSettled)
+                Text(
+                  'Settled ${DateFormat('d MMM').format(settlement.settledAt!)}',
+                  style: TextStyle(
+                    color: AppColors.success,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              if (!settlement.isSettled && showSettleButton && onSettle != null)
+                GestureDetector(
+                  onTap: onSettle,
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.success,
+                      borderRadius: BorderRadius.circular(AppRadii.pill),
+                    ),
+                    child: const Text(
+                      'Settle Up',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

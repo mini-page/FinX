@@ -4,12 +4,18 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:workmanager/workmanager.dart';
-import 'package:xpens/features/settings/data/datasource/preferences_local_datasource.dart';
-import 'package:xpens/features/settings/data/models/app_preferences_model.dart';
+import 'package:expensio/features/settings/data/datasource/preferences_local_datasource.dart';
+import 'package:expensio/features/settings/data/models/app_preferences_model.dart';
+import 'recurring_notification_task.dart';
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
+    // ── Recurring due-date notification check ────────────────────────────────
+    if (task == kRecurringCheckTask) {
+      return runRecurringNotificationTask();
+    }
+
     try {
       await Hive.initFlutter();
 
@@ -51,7 +57,7 @@ void callbackDispatcher() {
           .split('.')
           .first;
       final backupFile =
-          File(p.join(targetDir.path, 'xpens_backup_$timestamp.xpens'));
+          File(p.join(targetDir.path, 'expensio_backup_$timestamp.xpens'));
 
       final encoder = ZipFileEncoder();
       encoder.create(backupFile.path);

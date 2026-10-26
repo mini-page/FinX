@@ -1,18 +1,9 @@
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath("com.android.tools.build:gradle:8.11.1")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.20")
-    }
-}
 
 allprojects {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://repo1.maven.org/maven2/") }
     }
 }
 
@@ -23,7 +14,6 @@ rootProject.layout.buildDirectory.value(newBuildDir)
 subprojects {
     val newSubprojectBuildDir = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
-    project.evaluationDependsOn(":app")
 
     configurations.all {
         resolutionStrategy {

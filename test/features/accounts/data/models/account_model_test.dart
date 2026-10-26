@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xpens/features/accounts/data/models/account_model.dart';
+import 'package:expensio/features/accounts/data/models/account_model.dart';
 
 void main() {
   group('AccountModel Validation', () {

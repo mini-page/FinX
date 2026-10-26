@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:xpens/core/theme/app_colors.dart';
-import 'package:xpens/shared/widgets/app_page_header.dart';
+import 'package:expensio/core/theme/app_colors.dart';
+import 'package:expensio/shared/widgets/app_page_header.dart';
 import '../accounts/tools_tab_widgets.dart';
 
 class SubscriptionsScreen extends ConsumerWidget {

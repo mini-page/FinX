@@ -24,7 +24,7 @@ class AboutScreen extends ConsumerWidget {
   static const String _instagramUrl = 'https://www.instagram.com/ug_5711';
   static const String _repoUrl = 'https://github.com/mini-page/XPens';
   static const String _issuesUrl = 'https://github.com/mini-page/XPens/issues';
-  static const String _email = 'xpens-support@gmail.com';
+  static const String _email = 'expensio-support@gmail.com';
   static const int _kMaxReleaseNotesLength = 280;
 
   Future<void> _launchUrl(String url) async {
@@ -116,9 +116,11 @@ class AboutScreen extends ConsumerWidget {
                   iconColor: AppColors.primaryBlue,
                   title: 'Share with Friends',
                   subtitle: 'Word of mouth is the best marketing',
-                  onTap: () => Share.share(
-                    'Check out XPens – a free, offline-first expense tracker! '
-                    '$_repoUrl',
+                  onTap: () => SharePlus.instance.share(
+                    ShareParams(
+                      text: 'Check out XPens – a free, offline-first expense tracker! '
+                          '$_repoUrl',
+                    ),
                   ),
                 ),
               ],

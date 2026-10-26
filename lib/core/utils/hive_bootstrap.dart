@@ -1,18 +1,23 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
-import 'package:xpens/features/accounts/data/datasource/account_local_datasource.dart';
-import 'package:xpens/features/categories/data/datasource/budget_local_datasource.dart';
-import 'package:xpens/features/expense/data/datasource/expense_local_datasource.dart';
-import 'package:xpens/features/categories/data/datasource/month_budget_local_datasource.dart';
-import 'package:xpens/features/settings/data/datasource/preferences_local_datasource.dart';
-import 'package:xpens/features/recurring/data/datasource/recurring_subscription_local_datasource.dart';
-import 'package:xpens/features/accounts/data/models/account_model.dart';
-import 'package:xpens/features/settings/data/models/app_preferences_model.dart';
-import 'package:xpens/features/categories/data/models/budget_model.dart';
-import 'package:xpens/features/expense/data/models/expense_model.dart';
-import 'package:xpens/features/recurring/data/models/recurring_subscription_model.dart';
-import 'package:xpens/features/tags/data/datasource/tag_shorthand_local_datasource.dart';
-import 'package:xpens/features/tags/data/models/tag_shorthand_model.dart';
+import 'package:expensio/features/accounts/data/datasource/account_local_datasource.dart';
+import 'package:expensio/features/categories/data/datasource/budget_local_datasource.dart';
+import 'package:expensio/features/expense/data/datasource/expense_local_datasource.dart';
+import 'package:expensio/features/categories/data/datasource/month_budget_local_datasource.dart';
+import 'package:expensio/features/settings/data/datasource/preferences_local_datasource.dart';
+import 'package:expensio/features/recurring/data/datasource/recurring_subscription_local_datasource.dart';
+import 'package:expensio/features/accounts/data/models/account_model.dart';
+import 'package:expensio/features/settings/data/models/app_preferences_model.dart';
+import 'package:expensio/features/categories/data/models/budget_model.dart';
+import 'package:expensio/features/expense/data/models/expense_model.dart';
+import 'package:expensio/features/recurring/data/models/recurring_subscription_model.dart';
+import 'package:expensio/features/tags/data/datasource/tag_shorthand_local_datasource.dart';
+import 'package:expensio/features/tags/data/models/tag_shorthand_model.dart';
+import 'package:expensio/features/accounts/data/datasource/participant_local_datasource.dart';
+import 'package:expensio/features/accounts/data/models/participant_model.dart';
+import 'package:expensio/features/accounts/data/datasource/settlement_local_datasource.dart';
+import 'package:expensio/features/accounts/data/models/settlement_model.dart';
+import 'package:expensio/features/categories/data/datasource/week_budget_local_datasource.dart';
 
 abstract final class HiveBootstrap {
   static Future<void> initialize() async {
@@ -37,6 +42,12 @@ abstract final class HiveBootstrap {
     }
     if (!Hive.isAdapterRegistered(TagShorthandModelAdapter.typeIdValue)) {
       Hive.registerAdapter(TagShorthandModelAdapter());
+    }
+    if (!Hive.isAdapterRegistered(ParticipantModelAdapter.typeIdValue)) {
+      Hive.registerAdapter(ParticipantModelAdapter());
+    }
+    if (!Hive.isAdapterRegistered(SettlementModelAdapter.typeIdValue)) {
+      Hive.registerAdapter(SettlementModelAdapter());
     }
 
     if (!Hive.isBoxOpen(ExpenseLocalDatasource.boxName)) {
@@ -63,6 +74,15 @@ abstract final class HiveBootstrap {
     }
     if (!Hive.isBoxOpen(TagShorthandLocalDatasource.boxName)) {
       await Hive.openBox<TagShorthandModel>(TagShorthandLocalDatasource.boxName);
+    }
+    if (!Hive.isBoxOpen(ParticipantLocalDatasource.boxName)) {
+      await Hive.openBox<ParticipantModel>(ParticipantLocalDatasource.boxName);
+    }
+    if (!Hive.isBoxOpen(WeekBudgetLocalDatasource.boxName)) {
+      await Hive.openBox<double>(WeekBudgetLocalDatasource.boxName);
+    }
+    if (!Hive.isBoxOpen(SettlementLocalDatasource.boxName)) {
+      await Hive.openBox<SettlementModel>(SettlementLocalDatasource.boxName);
     }
   }
 }

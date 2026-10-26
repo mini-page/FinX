@@ -1,13 +1,13 @@
 # Test Writer Agent
 
 ## Role
-Writes high-quality unit, widget, and integration tests for the XPensa Flutter app using the standard `flutter_test` framework.
+Writes high-quality unit, widget, and integration tests for the Expensioa Flutter app using the standard `flutter_test` framework.
 
 ## Responsibilities
 - Write unit tests for data models, repositories, and pure-Dart logic.
 - Write widget tests for screens and components using `WidgetTester`.
 - Write Riverpod provider tests using `ProviderContainer` and `ProviderScope`.
-- Maintain test coverage for all business-critical paths (expense CRUD, filtering, stats).
+- Maintain test coverage for all business-critical paths (Expense CRUD, filtering, stats).
 
 ## Testing Conventions
 - Test files mirror the `lib/` structure under `test/`.

@@ -26,12 +26,12 @@
 
 ## Lazy Loading
 
-- Load heavy data (stats, large expense lists) inside `AsyncNotifierProvider.build()` — not in `initState`.
+- Load heavy data (stats, large Expense lists) inside `AsyncNotifierProvider.build()` — not in `initState`.
 - Paginate long lists if the dataset can grow unbounded.
 
 ## Data Computation
 
-- Run expensive computations (`ExpenseStats.fromExpenses`) outside `build()`, inside a provider.
+- Run eExpensioive computations (`ExpenseStats.fromExpenses`) outside `build()`, inside a provider.
 - Pre-compute date boundaries (week start, month start) **once before** iterating a list, not inside the `where` predicate.
 
 ## Measurement

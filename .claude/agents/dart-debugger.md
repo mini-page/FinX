@@ -20,8 +20,8 @@ Expert in diagnosing Dart and Flutter runtime issues: exceptions, null-safety er
 
 ## Common Pitfalls in This Codebase
 - `date.toLocal()` must be called before year/month/day comparisons in filters.
-- `ExpenseStats` is in `expense_providers.dart`, not in any model file.
-- Feature barrel imports (e.g. `package:xpensa/features/accounts/accounts.dart`) are preferred over deep paths.
+- `ExpenseStats` is in `Expense_providers.dart`, not in any model file.
+- Feature barrel imports (e.g. `package:Expensioa/features/accounts/accounts.dart`) are preferred over deep paths.
 
 ## Output Format
 1. **Root Cause** – one-sentence summary.

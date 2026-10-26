@@ -83,7 +83,7 @@ class HomeDateStrip extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.primaryBlue.withOpacity(0.1),
+                      color: AppColors.primaryBlue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Text(
@@ -132,7 +132,7 @@ class HomeDateStrip extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9).withOpacity(0.6), // Beautiful light blue-grey card
+                color: const Color(0xFFF1F5F9).withValues(alpha: 0.6), // Beautiful light blue-grey card
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
@@ -190,7 +190,7 @@ class HomeDateStrip extends StatelessWidget {
                                       : Colors.transparent,
                                   shape: BoxShape.circle,
                                   border: isToday && !isSelected
-                                      ? Border.all(color: AppColors.primaryBlue.withOpacity(0.4), width: 1.5)
+                                      ? Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.4), width: 1.5)
                                       : null,
                                 ),
                                 alignment: Alignment.center,

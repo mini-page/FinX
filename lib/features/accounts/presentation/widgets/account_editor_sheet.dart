@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:xpens/core/theme/app_colors.dart';
-import 'package:xpens/core/utils/context_extensions.dart';
-import 'package:xpens/features/accounts/data/models/account_model.dart';
-import 'package:xpens/features/accounts/presentation/widgets/account_icons.dart';
+import 'package:expensio/core/theme/app_colors.dart';
+import 'package:expensio/core/utils/context_extensions.dart';
+import 'package:expensio/features/accounts/data/models/account_model.dart';
+import 'package:expensio/features/accounts/presentation/widgets/account_icons.dart';
 
 class AccountFormResult {
   const AccountFormResult({

@@ -1,6 +1,6 @@
-# XPens – Tasks & Future Goals
+# Expensio – Tasks & Future Goals
 
-> **Purpose:** Backlog of planned improvements, feature ideas, and technical debt items for the XPens app.
+> **Purpose:** Backlog of planned improvements, feature ideas, and technical debt items for the Expensio app.
 > Update this file as items are started, completed, or reprioritised.
 > Last updated: 2026-04-20.
 
@@ -25,7 +25,7 @@
 | B-1 | 🔴 | Replace `assets/icon/app_icon.png` with new logo (1024×1024, solid bg, no alpha) | See brand guide below |
 | B-2 | 🔴 | Replace `assets/icon/app_icon_fg.png` with logo foreground (1024×1024, transparent bg, logo centred at ~66%) | For Android adaptive icon |
 | B-3 | 🔴 | Replace `assets/icon/splash_mark.png` with new logo mark (512×512, transparent bg) | For splash screen |
-| B-4 | 🔴 | Replace `assets/images/xpens_logo.png` with in-app logo (1024×1024, transparent bg) | Shown in About / Onboarding |
+| B-4 | 🔴 | Replace `assets/images/Expensio_logo.png` with in-app logo (1024×1024, transparent bg) | Shown in About / Onboarding |
 | B-5 | 🔴 | Update `adaptive_icon_background` colour in `pubspec.yaml` to match new brand navy | Currently `#0A6BE8` (blue) |
 | B-6 | 🔴 | Run `flutter pub run flutter_launcher_icons` after asset replacement to regenerate all mipmap PNGs | Auto-generates density variants |
 | B-7 | 🔴 | Run `flutter pub run flutter_native_splash:create` after asset replacement to regenerate splash assets | Auto-generates all drawable variants |
@@ -39,7 +39,7 @@
 | `app_icon.png` | 1024×1024 | 100% | Solid dark navy (e.g. `#0F1629`) | PNG, no alpha |
 | `app_icon_fg.png` | 1024×1024 | ~680×680 px centred | **Transparent** | PNG RGBA |
 | `splash_mark.png` | 512×512 | ~300×300 px centred | **Transparent** | PNG RGBA |
-| `xpens_logo.png` | 1024×1024 | your choice | Transparent preferred | PNG RGBA |
+| `Expensio_logo.png` | 1024×1024 | your choice | Transparent preferred | PNG RGBA |
 
 ---
 
@@ -47,7 +47,7 @@
 
 | # | Priority | Task | Notes |
 |---|----------|------|-------|
-| A-1 | 🟡 | Physical feature migration – move `accounts`, `categories`, `analytics`, `settings` providers + data layer into their own `lib/features/<name>/` directories | Currently re-exported via barrel; actual code still lives under `expense/` |
+| A-1 | 🟡 | Physical feature migration – move `accounts`, `categories`, `analytics`, `settings` providers + data layer into their own `lib/features/<name>/` directories | Currently re-exported via barrel; actual code still lives under `Expense/` |
 | A-2 | 🟡 | Create `lib/features/sms_parser/` proper barrel `sms_parser.dart` index with full re-exports | Partial – `sms_parser.dart` exists but may need updating |
 | A-3 | 🟡 | Add Hive TypeAdapter for `CustomCategoryModel` if missing | Check `hive_bootstrap.dart` |
 | A-4 | 🟢 | Replace remaining inline `ThemeData` usages (if any) with `AppTheme.light()` / `AppTheme.dark()` | |
@@ -66,15 +66,15 @@
 | F-4 | 🟡 | **SMS Auto-import** – complete `sms_monitoring_service.dart` so detected bank SMS transactions auto-appear in the queue for confirmation | Parser engine exists; monitoring service needs foreground-service permission handling |
 | F-5 | 🟡 | **Receipt Scanner** – finish `receipt_scanner_screen.dart` OCR pipeline: extract merchant, amount, date and pre-fill AddExpense | Screen scaffolded; OCR logic pending |
 | F-6 | 🟡 | **Product Scanner** – complete `product_scanner_screen.dart` to look up product price by barcode via `ai_product_service.dart` | |
-| F-7 | 🟡 | **Voice Entry** – complete `voice_entry_screen.dart` so spoken expense amount + category is recognised and submitted | Screen scaffolded; STT integration pending |
+| F-7 | 🟡 | **Voice Entry** – complete `voice_entry_screen.dart` so spoken Expense amount + category is recognised and submitted | Screen scaffolded; STT integration pending |
 | F-8 | 🟡 | **UPI Scanner** – complete `upi_scanner_screen.dart` to parse UPI deep-link QR codes and auto-fill AddExpense | Screen exists; edge-case parsing needed |
 | F-9 | 🟡 | **In-app update prompt** – wire `update_service.dart` to show a non-blocking banner when a new version is available | Service scaffolded |
 | F-10 | 🟡 | **Custom Categories** – wire `custom_category_model.dart` + `category_editor_sheet.dart` into the CategoriesScreen so users can add/edit/delete their own categories | Model + sheet exist |
 | F-11 | 🟢 | **Budget roll-over** – allow unused budget from previous month to carry forward | New feature |
 | F-12 | 🟢 | **Multi-currency** – per-account currency with live exchange rates via HTTP | Requires schema change |
 | F-13 | 🟢 | **CSV / PDF export** – export transaction history as CSV or PDF via `share_plus` | |
-| F-14 | 🟢 | **Shared expenses** – tag a transaction as shared, split with contacts | Long-term |
-| F-15 | 🟢 | **iCloud / Google Drive backup** – auto-upload `.xpens` backup file to cloud storage | Long-term |
+| F-14 | 🟢 | **Shared Expenses** – tag a transaction as shared, split with contacts | Long-term |
+| F-15 | 🟢 | **iCloud / Google Drive backup** – auto-upload `.Expensio` backup file to cloud storage | Long-term |
 | F-16 | 🟢 | **Dark/light scheduled theme** – auto-switch theme based on time of day | |
 | F-17 | 🟢 | **Loan tracker** – track money lent to / borrowed from people | New feature |
 
@@ -103,7 +103,7 @@
 | T-2 | 🟡 | Write unit tests for `amount_expression.dart` calculator logic | |
 | T-3 | 🟡 | Write unit tests for `tag_parser.dart` | |
 | T-4 | 🟡 | Widget tests for `FloatingNavBar`, `AppPillSwitch`, `AppButton` | |
-| T-5 | 🟢 | Integration test: full add-expense → stats-screen flow | |
+| T-5 | 🟢 | Integration test: full add-Expense → stats-screen flow | |
 | T-6 | 🟢 | Integration test: backup export → wipe → restore flow | |
 
 ---
@@ -139,4 +139,4 @@
 | 2026-04-04 | `AppPillSwitch` shared widget replacing duplicates |
 | 2026-04-06 | `AppTheme.light()` / `AppTheme.dark()` centralised |
 | 2026-04-16 | Home screen scroll bottom padding fix (160 dp) |
-| 2026-04-19 | Rebrand XPensa → XPens; package `app.xpensa.finance` → `app.xpens.finance` |
+| 2026-04-19 | Rebrand Expensioa → Expensio; package `app.Expensioa.finance` → `app.Expensio.finance` |

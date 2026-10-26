@@ -142,7 +142,13 @@ class RecurringSubscriptionController {
     required String iconKey,
     String note = '',
     bool isActive = true,
-    String billingPeriod = 'monthly',
+    String billingPeriod = '1:month',
+    String category = '',
+    DateTime? lastPaymentDate,
+    List<double>? priceHistory,
+    int notifyDaysBefore = 7,
+    String? cancellationNote,
+    DateTime? cancelledAt,
   }) async {
     final subscription = id == null
         ? RecurringSubscriptionModel.create(
@@ -153,6 +159,12 @@ class RecurringSubscriptionController {
             note: note,
             isActive: isActive,
             billingPeriod: billingPeriod,
+            category: category,
+            lastPaymentDate: lastPaymentDate,
+            priceHistory: priceHistory ?? const [],
+            notifyDaysBefore: notifyDaysBefore,
+            cancellationNote: cancellationNote,
+            cancelledAt: cancelledAt,
           )
         : RecurringSubscriptionModel(
             id: id,
@@ -163,6 +175,12 @@ class RecurringSubscriptionController {
             note: note,
             isActive: isActive,
             billingPeriod: billingPeriod,
+            category: category,
+            lastPaymentDate: lastPaymentDate,
+            priceHistory: priceHistory ?? const [],
+            notifyDaysBefore: notifyDaysBefore,
+            cancellationNote: cancellationNote,
+            cancelledAt: cancelledAt,
           );
 
     await ref

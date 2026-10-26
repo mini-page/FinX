@@ -13,5 +13,5 @@ export 'presentation/screens/stats_screen.dart';
 export 'presentation/screens/stats/stats_widgets.dart';
 
 // Presentation – providers (stats live in the expense providers for now)
-export 'package:xpens/features/expense/presentation/provider/expense_providers.dart'
+export 'package:expensio/features/expense/presentation/provider/expense_providers.dart'
     show statsProvider;

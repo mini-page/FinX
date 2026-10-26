@@ -36,4 +36,32 @@ class AppColors {
   static const Color lightBlueBg = Color(0xFFEFF5FF);
   static const Color accentLime = Color(0xFFD6F57C);
   static const Color accentLimeDark = Color(0xFF253411);
+
+  // Purplish & Pink Theme Accent Colors (Finance Tools visual identity)
+  static const Color accentPurple = Color(0xFF8B5CF6);
+  static const Color accentPurpleDark = Color(0xFF6D28D9);
+  static const Color accentPurpleLight = Color(0xFFDDD6FE);
+  static const Color accentPurpleBg = Color(0xFFF5F3FF);
+
+  static const Color accentPink = Color(0xFFEC4899);
+  static const Color accentPinkDark = Color(0xFFBE185D);
+  static const Color accentPinkLight = Color(0xFFFBCFE8);
+  static const Color accentPinkBg = Color(0xFFFDF2F8);
+
+  static const LinearGradient primaryGradient = LinearGradient(
+    colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient backgroundGradient = LinearGradient(
+    colors: [
+      Color(0xFFEDE9FE), // Soft Lavender/Purple
+      Color(0xFFFAF5FF), // Lighter Purple
+      Colors.white,      // Pure White at bottom
+    ],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: [0.0, 0.25, 0.6],
+  );
 }

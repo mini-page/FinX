@@ -5,9 +5,9 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../shared/widgets/app_page_header.dart';
-import 'package:xpens/features/accounts/presentation/provider/account_providers.dart';
+import 'package:expensio/features/accounts/presentation/provider/account_providers.dart';
 import '../../provider/preferences_providers.dart';
-import 'package:xpens/features/sms_parser/presentation/provider/sms_providers.dart';
+import 'package:expensio/features/sms_parser/presentation/provider/sms_providers.dart';
 import 'settings_widgets.dart';
 
 class NotificationSettingsScreen extends ConsumerWidget {
@@ -17,6 +17,7 @@ class NotificationSettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(appPreferencesControllerProvider);
     final smartReminders = ref.watch(smartRemindersEnabledProvider);
+    final notificationsEnabled = ref.watch(notificationsEnabledProvider);
     final smsParsingEnabled = ref.watch(smsParsingEnabledProvider);
 
     return Scaffold(
@@ -38,6 +39,14 @@ class NotificationSettingsScreen extends ConsumerWidget {
                   subtitle: 'Gentle nudges for pending bills',
                   value: smartReminders,
                   onChanged: controller.setSmartReminders,
+                ),
+                const Divider(height: 1, indent: 70, endIndent: 20),
+                SettingsToggleTile(
+                  icon: Icons.notifications_active_rounded,
+                  title: 'System Notifications',
+                  subtitle: 'Show alerts in the notification drawer',
+                  value: notificationsEnabled,
+                  onChanged: controller.setNotificationsEnabled,
                 ),
               ],
             ),
@@ -94,7 +103,7 @@ class NotificationSettingsScreen extends ConsumerWidget {
 
   Future<void> _triggerTestNotification(BuildContext context) async {
     try {
-      const channel = MethodChannel('app.xpens.finance/widget');
+      const channel = MethodChannel('app.expensio/widget');
       await channel.invokeMethod('triggerMockNotification', {
         'amount': 1250.0,
         'merchant': 'Mock Retail Shop',

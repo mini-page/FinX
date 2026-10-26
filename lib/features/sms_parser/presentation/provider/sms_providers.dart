@@ -2,11 +2,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../expense/presentation/provider/expense_providers.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
 import '../../../expense/data/models/expense_model.dart';
 import '../../data/sms_queue_item.dart';
 import '../../data/sms_transaction.dart';
 import '../../domain/sms_parser_engine.dart';
+import '../../domain/sms_inbox_service.dart';
 
 // ── Preferences-level SMS providers ─────────────────────────────────────────
 
@@ -77,6 +78,26 @@ class SmsQueueNotifier extends Notifier<List<SmsQueueItem>> {
     return item;
   }
 
+  /// Scans the device inbox for recent SMS and ingests all valid transactions.
+  Future<int> scanInbox({int limit = 100}) async {
+    final granted = await SmsPermissionHelper.isGranted();
+    if (!granted) return 0;
+
+    final messages = await SmsInboxService.getRecentSms(limit: limit);
+    int count = 0;
+    for (final msg in messages) {
+      final item = ingest(
+        sender: msg.sender,
+        body: msg.body,
+        receivedAt: msg.timestamp,
+      );
+      if (item != null) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   void markConfirmed(String transactionId) {
     state = state
         .map((item) => item.transaction.id == transactionId
@@ -121,6 +142,11 @@ class SmsQueueController {
   const SmsQueueController(this._ref);
 
   final Ref _ref;
+
+  /// Scans the device inbox for recent SMS and ingests all valid transactions.
+  Future<int> scanInbox({int limit = 100}) {
+    return _ref.read(smsQueueProvider.notifier).scanInbox(limit: limit);
+  }
 
   /// Save a parsed transaction using the user's configured defaults.
   Future<void> confirmWithDefaults(SmsTransaction tx) async {

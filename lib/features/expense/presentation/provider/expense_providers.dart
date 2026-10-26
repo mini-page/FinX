@@ -5,14 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/widget_sync_service.dart';
 import '../../data/datasource/expense_local_datasource.dart';
-import 'package:xpens/features/accounts/data/models/account_model.dart';
+import 'package:expensio/features/accounts/data/models/account_model.dart';
 import '../../data/models/expense_model.dart';
 import '../../data/repositories/hive_expense_repository.dart';
-import 'package:xpens/features/accounts/domain/repositories/account_repository.dart';
+import 'package:expensio/features/accounts/domain/repositories/account_repository.dart';
 import '../../domain/repositories/expense_repository.dart';
-import 'package:xpens/features/analytics/presentation/screens/stats/stats_widgets.dart';
-import 'package:xpens/features/accounts/presentation/provider/account_providers.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/analytics/presentation/screens/stats/stats_widgets.dart';
+import 'package:expensio/features/accounts/presentation/provider/account_providers.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
 
 final expenseLocalDatasourceProvider = Provider<ExpenseLocalDatasource>((ref) {
   return ExpenseLocalDatasource();
@@ -90,6 +90,8 @@ class ExpenseController {
     String? subcategory,
     double? latitude,
     double? longitude,
+    String? splitMethod,
+    String? paidByParticipantId,
   }) async {
     final expense = ExpenseModel.create(
       amount: amount,
@@ -101,6 +103,8 @@ class ExpenseController {
       subcategory: subcategory,
       latitude: latitude,
       longitude: longitude,
+      splitMethod: splitMethod,
+      paidByParticipantId: paidByParticipantId,
     );
 
     await _applyBalanceAdjustments(nextExpense: expense);
@@ -146,6 +150,8 @@ class ExpenseController {
     String? subcategory,
     double? latitude,
     double? longitude,
+    String? splitMethod,
+    String? paidByParticipantId,
   }) async {
     final existingExpense = await _findExpenseById(id);
     if (existingExpense == null) {
@@ -168,6 +174,10 @@ class ExpenseController {
       clearLatitude: latitude == null,
       longitude: longitude,
       clearLongitude: longitude == null,
+      splitMethod: splitMethod,
+      clearSplitMethod: splitMethod == null,
+      paidByParticipantId: paidByParticipantId,
+      clearPaidByParticipantId: paidByParticipantId == null,
     );
 
     await _applyBalanceAdjustments(

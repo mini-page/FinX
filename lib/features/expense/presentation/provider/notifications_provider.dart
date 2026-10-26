@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import 'package:xpens/features/recurring/data/models/recurring_subscription_model.dart';
-import 'package:xpens/features/categories/presentation/provider/budget_providers.dart';
+import 'package:expensio/core/services/notification_service.dart';
+import 'package:expensio/features/recurring/data/models/recurring_subscription_model.dart';
+import 'package:expensio/features/categories/presentation/provider/budget_providers.dart';
 import 'expense_providers.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
-import 'package:xpens/features/recurring/presentation/provider/recurring_subscription_providers.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/recurring/presentation/provider/recurring_subscription_providers.dart';
+import 'package:expensio/features/sms_parser/sms_parser.dart';
+import 'package:expensio/features/expense/data/models/expense_model.dart';
 
 // ---------------------------------------------------------------------------
 // Domain model
@@ -14,6 +17,9 @@ import 'package:xpens/features/recurring/presentation/provider/recurring_subscri
 
 /// The category a notification belongs to.
 enum AppNotificationType {
+  /// Detected bank transaction from SMS awaiting review/logging.
+  smsTransaction,
+
   /// Spending has reached or exceeded a budget threshold.
   budgetAlert,
 
@@ -104,6 +110,26 @@ final _rawNotificationsProvider = Provider<List<AppNotificationItem>>((ref) {
               '${currencyFormat.format(limit)}).',
       timestamp: now,
       metadata: entry.key,
+    ));
+  }
+
+  // ── Pending SMS bank transactions ──────────────────────────────────────
+  final smsQueue = ref.watch(smsQueueProvider);
+  for (final item in smsQueue) {
+    if (item.status != SmsQueueStatus.pending) continue;
+    final tx = item.transaction;
+    final isDebit = tx.type == TransactionType.expense;
+    final verb = isDebit ? 'Debited' : 'Credited';
+    final merchant = tx.notes.isNotEmpty ? tx.notes : 'Bank Transaction';
+    final formattedAmount = currencyFormat.format(tx.amount);
+
+    items.add(AppNotificationItem(
+      id: 'sms_${tx.id}',
+      type: AppNotificationType.smsTransaction,
+      title: '$verb $formattedAmount at $merchant',
+      body: 'Detected from ${tx.senderAddress}. Tap to review & log as expense.',
+      timestamp: tx.timestamp,
+      metadata: tx.id,
     ));
   }
 
@@ -236,18 +262,60 @@ class NotificationsController {
     _ref.read(_notifInteractionProvider.notifier).markAllRead(ids);
   }
 
-  void dismiss(String id) =>
-      _ref.read(_notifInteractionProvider.notifier).dismiss(id);
+  void dismiss(String id) {
+    _ref.read(_notifInteractionProvider.notifier).dismiss(id);
+    if (id.startsWith('sms_')) {
+      final txId = id.substring(4);
+      _ref.read(smsQueueControllerProvider).dismiss(txId);
+    }
+  }
 
   void clearAll() {
-    final ids = _ref
-        .read(notificationsProvider)
-        .map((n) => n.id)
-        .toList(growable: false);
+    final notifs = _ref.read(notificationsProvider);
+    final ids = notifs.map((n) => n.id).toList(growable: false);
     _ref.read(_notifInteractionProvider.notifier).dismissAll(ids);
+    for (final n in notifs) {
+      if (n.id.startsWith('sms_')) {
+        _ref.read(smsQueueControllerProvider).dismiss(n.id.substring(4));
+      }
+    }
   }
 }
 
 final notificationsControllerProvider = Provider<NotificationsController>(
   (ref) => NotificationsController(ref),
 );
+
+// ---------------------------------------------------------------------------
+// System notification dispatch — fires system tray notifications for new items
+// ---------------------------------------------------------------------------
+
+final _dispatchedNotificationIds = <String>{};
+
+/// Call this whenever the notification list changes to push new items to the
+/// system notification tray.  Idempotent — already-dispatched IDs are skipped.
+///
+/// Set [enabled] to `false` to suppress all system notifications (defaults to
+/// the user preference from [notificationsEnabledProvider]).
+Future<void> dispatchSystemNotifications(
+  List<AppNotificationItem> notifications, {
+  bool enabled = true,
+}) async {
+  if (!enabled) return;
+
+  for (final item in notifications) {
+    if (_dispatchedNotificationIds.contains(item.id)) continue;
+    _dispatchedNotificationIds.add(item.id);
+
+    final channelId = item.type == AppNotificationType.recurringDue
+        ? 'recurring_due'
+        : 'budget_alerts';
+
+    await NotificationService.instance.showNotification(
+      id: item.id,
+      title: item.title,
+      body: item.body,
+      channelId: channelId,
+    );
+  }
+}

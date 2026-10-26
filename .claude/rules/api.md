@@ -1,6 +1,6 @@
 # api.md — API Integration Standards
 
-> **Current status:** XPensa is fully offline (Hive-only). These rules apply when external network calls are introduced (e.g., cloud sync, currency rates, auth).
+> **Current status:** Expensioa is fully offline (Hive-only). These rules apply when external network calls are introduced (e.g., cloud sync, currency rates, auth).
 
 ## HTTP Client Setup
 

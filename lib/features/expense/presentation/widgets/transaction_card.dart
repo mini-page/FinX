@@ -4,10 +4,10 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/tag_parser.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
 import '../../data/models/expense_model.dart';
 import 'amount_visibility.dart';
-import 'package:xpens/features/categories/presentation/widgets/expense_category.dart';
+import 'package:expensio/features/categories/presentation/widgets/expense_category.dart';
 
 class TransactionCard extends ConsumerStatefulWidget {
   const TransactionCard({
@@ -151,6 +151,10 @@ class _TransactionCardState extends ConsumerState<TransactionCard> {
                                 letterSpacing: 0.3,
                               ),
                             ),
+                            if (widget.expense.splitMethod != null) ...[
+                              const SizedBox(height: 4),
+                              _SplitBadge(method: widget.expense.splitMethod!),
+                            ],
                           ],
                         ),
                       ),
@@ -374,6 +378,39 @@ class _ActionButton extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SplitBadge extends StatelessWidget {
+  const _SplitBadge({required this.method});
+
+  final String method;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.primaryBlue.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.splitscreen_rounded, size: 10, color: AppColors.primaryBlue),
+          const SizedBox(width: 3),
+          Text(
+            method,
+            style: const TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryBlue,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
       ),
     );
   }

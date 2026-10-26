@@ -5,7 +5,7 @@ import '../../../../core/constants/app_assets.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/app_button.dart';
-import 'package:xpens/features/accounts/accounts.dart';
+import 'package:expensio/features/accounts/accounts.dart';
 import '../provider/preferences_providers.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
@@ -236,7 +236,7 @@ class _WelcomePage extends StatelessWidget {
           ),
           const SizedBox(height: 28),
           Text(
-            'Welcome to XPens',
+            'Welcome to Expensio',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w900,
@@ -245,7 +245,7 @@ class _WelcomePage extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'Your smart offline expense tracker.\nLet\'s set you up in a minute.',
+            'Your smart offline expense tracker.\nLet\'s get you set up in a minute.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                   color: AppColors.textSubtle,
@@ -452,7 +452,7 @@ class _PreferencesPage extends StatelessWidget {
           _OnboardingStepHeader(
             icon: Icons.tune_rounded,
             title: 'Preferences',
-            subtitle: 'Customise how XPens looks and behaves',
+            subtitle: 'Customise how Expensio looks and behaves',
           ),
           const SizedBox(height: 28),
           _SectionLabel(label: 'Theme'),
@@ -749,7 +749,7 @@ class _AiApiKeyPageState extends State<_AiApiKeyPage> {
           _OnboardingStepHeader(
             icon: Icons.auto_awesome_rounded,
             title: 'Unlock AI Features',
-            subtitle: 'Supercharge XPens with Gemini AI',
+            subtitle: 'Supercharge Expensio with Gemini AI',
           ),
           const SizedBox(height: 20),
           // Feature highlights

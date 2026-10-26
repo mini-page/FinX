@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xpens/features/expense/data/models/expense_model.dart';
-import 'package:xpens/features/expense/presentation/provider/expense_providers.dart';
+import 'package:expensio/features/expense/data/models/expense_model.dart';
+import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
 
 void main() {
   group('ExpenseStats.fromExpenses', () {

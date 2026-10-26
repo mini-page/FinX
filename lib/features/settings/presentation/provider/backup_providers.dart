@@ -6,16 +6,16 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-import 'package:xpens/features/accounts/accounts.dart';
-import 'package:xpens/features/accounts/data/datasource/account_local_datasource.dart';
-import 'package:xpens/features/settings/data/datasource/backup_local_datasource.dart';
-import 'package:xpens/features/categories/data/datasource/budget_local_datasource.dart';
-import 'package:xpens/features/expense/data/datasource/expense_local_datasource.dart';
-import 'package:xpens/features/recurring/data/datasource/recurring_subscription_local_datasource.dart';
-import 'package:xpens/features/categories/data/models/budget_model.dart';
-import 'package:xpens/features/expense/data/models/expense_model.dart';
-import 'package:xpens/features/recurring/data/models/recurring_subscription_model.dart';
-import 'package:xpens/core/utils/hive_bootstrap.dart';
+import 'package:expensio/features/accounts/accounts.dart';
+import 'package:expensio/features/accounts/data/datasource/account_local_datasource.dart';
+import 'package:expensio/features/settings/data/datasource/backup_local_datasource.dart';
+import 'package:expensio/features/categories/data/datasource/budget_local_datasource.dart';
+import 'package:expensio/features/expense/data/datasource/expense_local_datasource.dart';
+import 'package:expensio/features/recurring/data/datasource/recurring_subscription_local_datasource.dart';
+import 'package:expensio/features/categories/data/models/budget_model.dart';
+import 'package:expensio/features/expense/data/models/expense_model.dart';
+import 'package:expensio/features/recurring/data/models/recurring_subscription_model.dart';
+import 'package:expensio/core/utils/hive_bootstrap.dart';
 import 'preferences_providers.dart';
 
 final backupLocalDatasourceProvider = Provider<BackupLocalDatasource>((ref) {
@@ -39,9 +39,11 @@ class BackupController {
       final backupFile = await _datasource.createBackup();
 
       // Share the file so user can save it anywhere
-      await Share.shareXFiles(
-        [XFile(backupFile.path)],
-        subject: 'XPens Data Backup',
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(backupFile.path)],
+          subject: 'XPens Data Backup',
+        ),
       );
 
       // Clean up temporary file after sharing
@@ -57,9 +59,11 @@ class BackupController {
   Future<void> exportAsCSV() async {
     final csvFile = await _datasource.createCsvExport();
     try {
-      await Share.shareXFiles(
-        [XFile(csvFile.path, mimeType: 'text/csv')],
-        subject: 'XPens Transactions (CSV)',
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(csvFile.path, mimeType: 'text/csv')],
+          subject: 'XPens Transactions (CSV)',
+        ),
       );
     } finally {
       if (await csvFile.exists()) await csvFile.delete();
@@ -70,9 +74,11 @@ class BackupController {
   Future<void> exportAsJSON() async {
     final jsonFile = await _datasource.createJsonExport();
     try {
-      await Share.shareXFiles(
-        [XFile(jsonFile.path, mimeType: 'application/json')],
-        subject: 'XPens Transactions (JSON)',
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(jsonFile.path, mimeType: 'application/json')],
+          subject: 'XPens Transactions (JSON)',
+        ),
       );
     } finally {
       if (await jsonFile.exists()) await jsonFile.delete();
@@ -143,7 +149,7 @@ class BackupController {
 
   Future<bool> importData() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType
             .any, // .xpens might not be recognized as a custom type easily
       );

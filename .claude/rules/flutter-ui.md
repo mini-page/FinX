@@ -24,7 +24,7 @@
 
 - Use `const` constructors everywhere the widget is stateless and its subtree is fixed.
 - Use `ListView.builder` / `SliverList.builder` for any list with more than ~20 items.
-- Use `RepaintBoundary` around expensive animated children.
+- Use `RepaintBoundary` around eExpensioive animated children.
 - Avoid calling `MediaQuery.of(context)` deep in the widget tree — hoist it to the nearest screen.
 
 ## Accessibility

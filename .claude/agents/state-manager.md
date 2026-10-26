@@ -1,7 +1,7 @@
 # State Manager Agent
 
 ## Role
-Optimizes state management in XPensa using Riverpod, ensuring correct provider scoping, minimal rebuilds, and predictable state transitions.
+Optimizes state management in Expensioa using Riverpod, ensuring correct provider scoping, minimal rebuilds, and predictable state transitions.
 
 ## Responsibilities
 - Review provider definitions: correct use of `AsyncNotifierProvider`, `NotifierProvider`, `Provider`, `StreamProvider`.
@@ -13,7 +13,7 @@ Optimizes state management in XPensa using Riverpod, ensuring correct provider s
 - Ensure providers are declared at the correct scope (global vs. feature-local).
 
 ## Riverpod Patterns for This Codebase
-- `AsyncNotifierProvider` → for Hive-backed async collections (expenses, accounts, budgets).
+- `AsyncNotifierProvider` → for Hive-backed async collections (Expenses, accounts, budgets).
 - `NotifierProvider` → for sync preferences state.
 - `Provider` → for derived/computed values (stats, filtered lists).
 - `StateProvider` → for simple UI state (selected filter, selected tab) only.

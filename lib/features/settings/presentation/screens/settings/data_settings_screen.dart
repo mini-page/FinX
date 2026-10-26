@@ -8,10 +8,10 @@ import '../../../../../shared/widgets/app_page_header.dart';
 import '../../../../../core/utils/context_extensions.dart';
 import '../../provider/backup_providers.dart';
 import '../../provider/preferences_providers.dart';
-import 'package:xpens/features/accounts/accounts.dart';
-import 'package:xpens/features/categories/presentation/provider/budget_providers.dart';
-import 'package:xpens/features/expense/presentation/provider/expense_providers.dart';
-import 'package:xpens/features/recurring/presentation/provider/recurring_subscription_providers.dart';
+import 'package:expensio/features/accounts/accounts.dart';
+import 'package:expensio/features/categories/presentation/provider/budget_providers.dart';
+import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
+import 'package:expensio/features/recurring/presentation/provider/recurring_subscription_providers.dart';
 import 'settings_widgets.dart';
 
 class DataSettingsScreen extends ConsumerWidget {
@@ -254,7 +254,7 @@ class DataSettingsScreen extends ConsumerWidget {
 
   Future<void> _pickBackupDirectory(
       BuildContext context, WidgetRef ref) async {
-    final path = await FilePicker.platform.getDirectoryPath(
+    final path = await FilePicker.getDirectoryPath(
       dialogTitle: 'Choose Backup Location',
       lockParentWindow: true,
     );

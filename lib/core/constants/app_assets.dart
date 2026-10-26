@@ -1,6 +1,6 @@
 class AppAssets {
   // In-app images
-  static const String logo = 'assets/images/xpens_logo.png';
+  static const String logo = 'assets/images/expensio_logo.png';
 
   // Launcher / splash icons (build-time only)
   static const String appIcon = 'assets/icon/app_icon.png';

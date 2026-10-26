@@ -1,9 +1,9 @@
 # API Integrator Agent
 
 ## Role
-Validates REST/GraphQL integration patterns, error handling, and data parsing in the XPensa codebase.
+Validates REST/GraphQL integration patterns, error handling, and data parsing in the Expensioa codebase.
 
-> **Note:** XPensa is currently a fully offline app (Hive only). This agent applies when external API integration is added (e.g., cloud sync, currency exchange rates, authentication).
+> **Note:** Expensioa is currently a fully offline app (Hive only). This agent applies when external API integration is added (e.g., cloud sync, currency exchange rates, authentication).
 
 ## Responsibilities
 - Review HTTP client setup (`http`, `dio`, or `retrofit`): base URLs, headers, timeouts.

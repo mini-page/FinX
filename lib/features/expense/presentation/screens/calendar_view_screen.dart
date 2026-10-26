@@ -8,7 +8,7 @@ import '../../../../routes/app_routes.dart';
 import '../../../../shared/widgets/app_page_header.dart';
 import '../../data/models/expense_model.dart';
 import '../provider/expense_providers.dart';
-import 'package:xpens/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
 
 class CalendarViewScreen extends ConsumerStatefulWidget {
   const CalendarViewScreen({super.key, this.initialDate});
@@ -222,7 +222,7 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
                       decoration: BoxDecoration(
                         color: const Color(0xFFEFF6FF), // light blue
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.primaryBlue.withOpacity(0.2), width: 1),
+                        border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.2), width: 1),
                       ),
                       child: Text(
                         _calendarViewType,
@@ -274,7 +274,7 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: AppColors.primaryBlue.withOpacity(0.1),
+                          color: AppColors.primaryBlue.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Text(
@@ -418,7 +418,7 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9).withOpacity(0.6), // Beautiful light blue-grey card
+              color: const Color(0xFFF1F5F9).withValues(alpha: 0.6), // Beautiful light blue-grey card
               borderRadius: BorderRadius.circular(24),
             ),
             child: Column(
@@ -507,7 +507,7 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
                                       : Colors.transparent,
                                   shape: BoxShape.circle,
                                   border: isToday && !isSelected
-                                      ? Border.all(color: AppColors.primaryBlue.withOpacity(0.4), width: 1.5)
+                                      ? Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.4), width: 1.5)
                                       : null,
                                 ),
                                 alignment: Alignment.center,
@@ -722,7 +722,7 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: _getCategoryColor(tx.category, tx.type).withOpacity(0.1),
+                    color: _getCategoryColor(tx.category, tx.type).withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -1126,7 +1126,7 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
                                                     height: 28,
                                                     margin: const EdgeInsets.only(left: 4),
                                                     decoration: BoxDecoration(
-                                                      color: _getCategoryColor(cat, TransactionType.expense).withOpacity(0.06),
+                                                      color: _getCategoryColor(cat, TransactionType.expense).withValues(alpha: 0.06),
                                                       shape: BoxShape.circle,
                                                     ),
                                                     child: Icon(

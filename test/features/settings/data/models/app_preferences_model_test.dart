@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xpens/features/settings/data/models/app_preferences_model.dart';
+import 'package:expensio/features/settings/data/models/app_preferences_model.dart';
 
 void main() {
   group('AppPreferencesModel', () {
