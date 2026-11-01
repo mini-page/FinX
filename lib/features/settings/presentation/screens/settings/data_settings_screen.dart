@@ -455,7 +455,7 @@ class _ExportFormatSheet extends StatelessWidget {
               iconColor: AppColors.primaryBlue,
               title: 'Native Backup (.xpens)',
               subtitle:
-                  'Full backup — includes all app data. Use to restore XPens.',
+                  'Full backup — includes all app data. Use to restore Expensio.',
               onTap: () =>
                   Navigator.of(context).pop(_ExportFormat.native),
             ),

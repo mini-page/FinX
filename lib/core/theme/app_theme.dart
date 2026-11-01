@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'app_colors.dart';
 import 'app_tokens.dart';
 
-/// Centralised [ThemeData] factory for XPens.
+/// Centralised [ThemeData] factory for Expensio.
 ///
 /// Use [AppTheme.light] and [AppTheme.dark] instead of building
 /// [ThemeData] inline in `main.dart`. This enables global UI updates

@@ -42,7 +42,7 @@ class BackupController {
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(backupFile.path)],
-          subject: 'XPens Data Backup',
+          subject: 'Expensio Data Backup',
         ),
       );
 
@@ -62,7 +62,7 @@ class BackupController {
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(csvFile.path, mimeType: 'text/csv')],
-          subject: 'XPens Transactions (CSV)',
+          subject: 'Expensio Transactions (CSV)',
         ),
       );
     } finally {
@@ -77,7 +77,7 @@ class BackupController {
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(jsonFile.path, mimeType: 'application/json')],
-          subject: 'XPens Transactions (JSON)',
+          subject: 'Expensio Transactions (JSON)',
         ),
       );
     } finally {
@@ -101,7 +101,7 @@ class BackupController {
     } catch (_) {
       base = await getApplicationDocumentsDirectory();
     }
-    final dir = Directory(p.join(base.path, 'XPens', 'Backups'));
+    final dir = Directory(p.join(base.path, 'Expensio', 'Backups'));
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }

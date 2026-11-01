@@ -9,8 +9,8 @@ import '../../../../shared/widgets/app_page_header.dart';
 class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
 
-  static const String _repoUrl = 'https://github.com/mini-page/XPens';
-  static const String _issuesUrl = 'https://github.com/mini-page/XPens/issues';
+  static const String _repoUrl = 'https://github.com/mini-page/Expensio';
+  static const String _issuesUrl = 'https://github.com/mini-page/Expensio/issues';
   static const String _buyMeCoffeeUrl =
       'https://www.buymeacoffee.com/minipagedev';
 
@@ -56,7 +56,7 @@ class SupportScreen extends StatelessWidget {
               icon: Icons.bug_report_outlined,
               iconColor: AppColors.primaryBlue,
               title: 'Report a Bug',
-              subtitle: 'Help us fix issues and improve XPens',
+              subtitle: 'Help us fix issues and improve Expensio',
               onTap: () => _launchUrl(_issuesUrl),
             ),
             const SizedBox(height: 10),
@@ -67,7 +67,7 @@ class SupportScreen extends StatelessWidget {
               subtitle: 'Word of mouth is the best marketing',
               onTap: () => SharePlus.instance.share(
                 ShareParams(
-                  text: 'Check out XPens – a free, offline-first expense tracker! '
+                  text: 'Check out Expensio – a smart, private personal finance manager! (https://fin.expensio.com) '
                       '$_repoUrl',
                 ),
               ),
@@ -117,7 +117,7 @@ class _HeroCard extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           const Text(
-            'Support XPens',
+            'Support Expensio',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w900,
@@ -136,7 +136,7 @@ class _HeroCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           const Text(
-            'Your support keeps XPens free, independent,\n'
+            'Your support keeps Expensio free, independent,\n'
             'and actively maintained — no ads, no tracking,\n'
             'just a better way to manage your money.',
             textAlign: TextAlign.center,

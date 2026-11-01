@@ -7,12 +7,10 @@ import 'package:expensio/core/theme/app_tokens.dart';
 import 'package:expensio/shared/widgets/app_page_header.dart';
 import 'package:expensio/features/categories/presentation/provider/budget_state.dart';
 import 'package:expensio/features/categories/presentation/provider/week_budget_providers.dart';
-import 'package:expensio/features/categories/presentation/provider/budget_providers.dart';
 import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
 import 'package:expensio/features/expense/data/models/expense_model.dart';
 import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
 import 'package:expensio/features/categories/presentation/screens/categories/budget_popup.dart';
-import 'package:expensio/features/categories/presentation/provider/week_budget_providers.dart' show weekKeyOf, weekEndDate, weekStartDate, isoWeekNumber;
 
 enum _BudgetTab { monthly, weekly }
 

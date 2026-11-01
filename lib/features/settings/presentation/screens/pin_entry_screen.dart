@@ -132,7 +132,7 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen>
     if (_phase == 'verify') return 'Verify your existing 4-digit PIN';
     if (_phase == 'confirm') return 'Re-enter your new PIN to confirm';
     if (widget.isSetup) return 'Choose a 4-digit PIN to secure the app';
-    return 'Enter your 4-digit PIN to unlock XPens';
+    return 'Enter your 4-digit PIN to unlock Expensio';
   }
 
   // ── Input handlers ─────────────────────────────────────────────────────────

@@ -45,11 +45,11 @@ class HomeTopBar extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
             padding: const EdgeInsets.all(5),
-            child: Image.asset(AppAssets.logo),
+            child: Image.asset(AppAssets.logoDark),
           ),
           const SizedBox(width: 10),
           const Text(
-            'XPens',
+            'Expensio',
             style: TextStyle(
               color: Colors.white,
               fontSize: 22,

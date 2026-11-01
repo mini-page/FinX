@@ -98,7 +98,7 @@ Future<Directory> _resolveDefaultBackupDir() async {
   } catch (_) {
     base = await getApplicationDocumentsDirectory();
   }
-  final dir = Directory(p.join(base.path, 'XPens', 'Backups'));
+  final dir = Directory(p.join(base.path, 'Expensio', 'Backups'));
   if (!await dir.exists()) {
     await dir.create(recursive: true);
   }

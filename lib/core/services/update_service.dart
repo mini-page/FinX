@@ -29,15 +29,15 @@ class UpdateInfo {
 // ── Service ───────────────────────────────────────────────────────────────────
 
 /// Checks the GitHub Releases API to determine whether a newer version of
-/// XPens is available.
+/// Expensio is available.
 ///
 /// Returns [null] if the current version is already the latest, or if the
 /// check cannot be completed (network error, unexpected response, etc.).
 class UpdateService {
   static const _latestReleaseApiUrl =
-      'https://api.github.com/repos/mini-page/XPens/releases/latest';
+      'https://api.github.com/repos/mini-page/Expensio/releases/latest';
   static const _releasesPageUrl =
-      'https://github.com/mini-page/XPens/releases/latest';
+      'https://github.com/mini-page/Expensio/releases/latest';
 
   static Future<UpdateInfo?> checkForUpdate() async {
     final client = http.Client();

@@ -153,7 +153,7 @@ class _PermissionsSettingsScreenState extends State<PermissionsSettingsScreen> w
                               ),
                               SizedBox(height: 4),
                               Text(
-                                'XPens requires system accesses to automate transaction imports, geolocation mapping, and QR scanners.',
+                                'Expensio requires system accesses to automate transaction imports, geolocation mapping, and QR scanners.',
                                 style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.4),
                               ),
                             ],

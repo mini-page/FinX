@@ -1,10 +1,15 @@
 /// Application-wide constants shared across the app.
 abstract final class AppConstants {
-  /// The current app version string.  Keep in sync with pubspec.yaml.
+  /// The current app version string. Keep in sync with pubspec.yaml.
   static const String version = '3.0.0';
 
-  /// Display name shown on the about dialog and in the drawer footer.
+  /// Display name shown across the app, dialogs, drawers, and headers.
   static const String appName = 'Expensio';
+
+  /// Official Web Domain & URLs
+  static const String websiteDomain = 'fin.expensio.com';
+  static const String websiteUrl = 'https://fin.expensio.com';
+  static const String supportEmail = 'support@expensio.com';
 
   /// Supported currency options (symbol → display label).
   static const List<({String symbol, String label})> currencies = [

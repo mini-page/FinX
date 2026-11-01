@@ -22,9 +22,9 @@ class AboutScreen extends ConsumerWidget {
   static const String _linkedinUrl = 'https://www.linkedin.com/in/ug5711';
   static const String _xUrl = 'https://x.com/ug_5711';
   static const String _instagramUrl = 'https://www.instagram.com/ug_5711';
-  static const String _repoUrl = 'https://github.com/mini-page/XPens';
-  static const String _issuesUrl = 'https://github.com/mini-page/XPens/issues';
-  static const String _email = 'expensio-support@gmail.com';
+  static const String _repoUrl = 'https://github.com/mini-page/Expensio';
+  static const String _issuesUrl = 'https://github.com/mini-page/Expensio/issues';
+  static const String _email = 'support@expensio.com';
   static const int _kMaxReleaseNotesLength = 280;
 
   Future<void> _launchUrl(String url) async {
@@ -49,7 +49,7 @@ class AboutScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── App identity card ───────────────────────────────────────────
-            _AppIdentityCard(),
+            _AppIdentityCard(onLaunchUrl: _launchUrl),
             const SizedBox(height: 28),
 
             // ── Update Checker ──────────────────────────────────────────────
@@ -74,7 +74,7 @@ class AboutScreen extends ConsumerWidget {
                   leading: const SettingsTileIcon(
                       icon: Icons.volunteer_activism_outlined),
                   title: const Text(
-                    'Support XPens',
+                    'Support Expensio',
                     style: TextStyle(
                         color: AppColors.textDark, fontWeight: FontWeight.w700),
                   ),
@@ -108,7 +108,7 @@ class AboutScreen extends ConsumerWidget {
                   icon: Icons.bug_report_outlined,
                   iconColor: AppColors.primaryBlue,
                   title: 'Report a Bug',
-                  subtitle: 'Help us fix issues and improve XPens',
+                  subtitle: 'Help us fix issues and improve Expensio',
                   onTap: () => _launchUrl(_issuesUrl),
                 ),
                 _ActionTile(
@@ -118,7 +118,7 @@ class AboutScreen extends ConsumerWidget {
                   subtitle: 'Word of mouth is the best marketing',
                   onTap: () => SharePlus.instance.share(
                     ShareParams(
-                      text: 'Check out XPens – a free, offline-first expense tracker! '
+                      text: 'Check out Expensio – a smart, private personal finance manager! (https://fin.expensio.com) '
                           '$_repoUrl',
                     ),
                   ),
@@ -261,7 +261,7 @@ class AboutScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'A new version of XPens is available.\n\n'
+              'A new version of Expensio is available.\n\n'
               'v${AppConstants.version}  \u2192  v${info.latestVersion}',
               style: const TextStyle(fontSize: 14),
             ),
@@ -296,7 +296,7 @@ class AboutScreen extends ConsumerWidget {
               } else if (context.mounted) {
                 context.showSnackBar(
                   'Could not open the download link. '
-                  'Visit github.com/mini-page/XPens/releases manually.',
+                  'Visit github.com/mini-page/Expensio/releases manually.',
                 );
               }
             },
@@ -312,6 +312,9 @@ class AboutScreen extends ConsumerWidget {
 // ── Private widgets ──────────────────────────────────────────────────────────
 
 class _AppIdentityCard extends StatelessWidget {
+  const _AppIdentityCard({required this.onLaunchUrl});
+  final Future<void> Function(String) onLaunchUrl;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -333,7 +336,7 @@ class _AppIdentityCard extends StatelessWidget {
           // Logo
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: Image.asset(AppAssets.logo, width: 72, height: 72),
+            child: Image.asset(AppAssets.logoDark, width: 72, height: 72),
           ),
           const SizedBox(height: 14),
           // App name
@@ -345,22 +348,57 @@ class _AppIdentityCard extends StatelessWidget {
               color: AppColors.primaryBlue,
             ),
           ),
-          const SizedBox(height: 6),
-          // Version badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.lightBlueBg,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              'Version ${AppConstants.version}',
-              style: const TextStyle(
-                color: AppColors.primaryBlue,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+          const SizedBox(height: 8),
+          // Version & Website badges
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.lightBlueBg,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'v${AppConstants.version}',
+                  style: const TextStyle(
+                    color: AppColors.primaryBlue,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
-            ),
+              InkWell(
+                onTap: () => onLaunchUrl(AppConstants.websiteUrl),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3E8FF),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFD8B4FE)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.language_rounded, size: 13, color: Color(0xFF7E22CE)),
+                      SizedBox(width: 4),
+                      Text(
+                        AppConstants.websiteDomain,
+                        style: TextStyle(
+                          color: Color(0xFF7E22CE),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
           const Text(
@@ -455,7 +493,7 @@ class _DeveloperCard extends StatelessWidget {
           const SizedBox(height: 16),
           const Text(
             "I'm a passionate developer building useful apps in my free time. "
-            "Every bit of support helps me keep building and improving XPens.",
+            "Every bit of support helps me keep building and improving Expensio.",
             style: TextStyle(
               color: AppColors.textMuted,
               fontSize: 13,

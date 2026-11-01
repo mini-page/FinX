@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/datasource/settlement_local_datasource.dart';
 import '../../data/models/settlement_model.dart';
-import '../../data/models/participant_model.dart';
 import 'participant_providers.dart';
 
 // ── datasource ────────────────────────────────────────────────────────────────

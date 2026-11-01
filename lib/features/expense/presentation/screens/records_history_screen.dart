@@ -644,7 +644,7 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
     await SharePlus.instance.share(
       ShareParams(
         text: buffer.toString(),
-        subject: 'XPens Transactions Export',
+        subject: 'Expensio Transactions Export',
       ),
     );
   }

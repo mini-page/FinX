@@ -232,7 +232,7 @@ class _WelcomePage extends StatelessWidget {
           const Spacer(),
           ClipRRect(
             borderRadius: BorderRadius.circular(24),
-            child: Image.asset(AppAssets.logo, width: 96, height: 96),
+            child: Image.asset(AppAssets.logoDark, width: 96, height: 96),
           ),
           const SizedBox(height: 28),
           Text(

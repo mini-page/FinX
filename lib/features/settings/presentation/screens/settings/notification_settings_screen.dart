@@ -166,7 +166,7 @@ class NotificationSettingsScreen extends ConsumerWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('SMS Permission Required'),
         content: const Text(
-          'XPens requires SMS read and receive permissions to detect transaction messages automatically.',
+          'Expensio requires SMS read and receive permissions to detect transaction messages automatically.',
         ),
         actions: <Widget>[
           TextButton(

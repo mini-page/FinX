@@ -39,7 +39,7 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                     SizedBox(height: 16),
                     Text(
-                      'XPens User',
+                      'Expensio User',
                       style: TextStyle(
                         color: AppColors.textDark,
                         fontSize: 28,
