@@ -9,6 +9,8 @@ import '../../../../shared/widgets/app_page_header.dart';
 import '../../data/models/expense_model.dart';
 import '../provider/expense_providers.dart';
 import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
+import 'package:expensio/features/accounts/presentation/provider/account_providers.dart';
+import 'package:expensio/features/expense/presentation/widgets/transaction_card.dart';
 
 class CalendarViewScreen extends ConsumerStatefulWidget {
   const CalendarViewScreen({super.key, this.initialDate});
@@ -24,7 +26,6 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
   DateTime _selectedDate = DateTime.now();
   String _selectedView = 'Calendar'; // 'Calendar' or 'Timeline'
   String _calendarViewType = 'Week'; // 'Week', '2 weeks', 'Month'
-  final Set<DateTime> _expandedTimelineDates = {};
   int _timelineMonthsCount = 1; // default to showing only current month, click load more to increment
 
   @override
@@ -166,6 +167,53 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
     return const Color(0xFF64748B); // Slate
   }
 
+  Future<void> _openEditExpenseScreen(
+    BuildContext context,
+    ExpenseModel expense,
+  ) {
+    return AppRoutes.pushEditExpense(
+      context,
+      expenseId: expense.id,
+      initialAmount: expense.amount,
+      initialCategory: expense.category,
+      initialDate: expense.date.toLocal(),
+      initialNote: expense.note,
+      initialAccountId: expense.accountId,
+      initialToAccountId: expense.toAccountId,
+      initialType: expense.type,
+      initialSubcategory: expense.subcategory,
+      initialLatitude: expense.latitude,
+      initialLongitude: expense.longitude,
+    );
+  }
+
+  Future<void> _confirmDeleteExpense(ExpenseModel expense) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete transaction?'),
+        content: const Text(
+          'This will permanently delete this transaction from your records.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await ref.read(expenseControllerProvider).deleteExpense(expense.id);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final expenses = ref.watch(expenseListProvider).value ?? const <ExpenseModel>[];
@@ -181,8 +229,8 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: const GradientAppBar(
-        title: 'Calendar View',
+      appBar: GradientAppBar(
+        title: _selectedView == 'Calendar' ? 'Calendar View' : 'Timeline View',
       ),
       body: Column(
         children: [
@@ -660,6 +708,9 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
   }
 
   Widget _buildDayTransactionsList(List<ExpenseModel> allExpenses, NumberFormat currencyFormat) {
+    final accounts = ref.watch(accountListProvider).value ?? const [];
+    final accountsMap = {for (final a in accounts) a.id: a};
+    final privacyModeEnabled = ref.watch(privacyModeEnabledProvider);
     final dayTxns = allExpenses.where((e) {
       return DateUtils.isSameDay(e.date.toLocal(), _selectedDate);
     }).toList();
@@ -684,133 +735,19 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
       );
     }
 
-    return ListView.separated(
+
+    return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
       itemCount: dayTxns.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final tx = dayTxns[index];
-        final isIncome = tx.type == TransactionType.income;
-        final isTransfer = tx.type == TransactionType.transfer;
-
-        return GestureDetector(
-          onTap: () => AppRoutes.pushEditExpense(
-            context,
-            expenseId: tx.id,
-            initialAmount: tx.amount,
-            initialCategory: tx.category,
-            initialDate: tx.date.toLocal(),
-            initialNote: tx.note,
-            initialAccountId: tx.accountId,
-            initialToAccountId: tx.toAccountId,
-            initialType: tx.type,
-            initialSubcategory: tx.subcategory,
-            initialLatitude: tx.latitude,
-            initialLongitude: tx.longitude,
-          ),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Row(
-              children: [
-                // Category Icon bubble
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: _getCategoryColor(tx.category, tx.type).withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    _getCategoryIcon(tx.category, tx.type),
-                    color: _getCategoryColor(tx.category, tx.type),
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Note/Category detail
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        tx.note.isNotEmpty ? tx.note : tx.category,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.textDark,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          if (tx.note.isNotEmpty) ...[
-                            Text(
-                              tx.category,
-                              style: const TextStyle(
-                                color: AppColors.textMuted,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            const Text('•', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 10)),
-                            const SizedBox(width: 6),
-                          ],
-                          if (tx.subcategory != null) ...[
-                            Text(
-                              tx.subcategory!,
-                              style: const TextStyle(
-                                color: AppColors.textTertiary,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            const Text('•', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 10)),
-                            const SizedBox(width: 6),
-                          ],
-                          Text(
-                            DateFormat('h:mm a').format(tx.date.toLocal()),
-                            style: const TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Amount
-                Text(
-                  isIncome
-                      ? '+${currencyFormat.format(tx.amount)}'
-                      : isTransfer
-                          ? currencyFormat.format(tx.amount)
-                          : '-${currencyFormat.format(tx.amount)}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                    color: isIncome
-                        ? const Color(0xFF059669)
-                        : isTransfer
-                            ? const Color(0xFF8B5CF6)
-                            : const Color(0xFFDC2626),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        return TransactionCard(
+          expense: tx,
+          accountLabel: tx.accountId != null ? accountsMap[tx.accountId]?.name : null,
+          toAccountLabel: tx.toAccountId != null ? accountsMap[tx.toAccountId]?.name : null,
+          maskAmounts: privacyModeEnabled,
+          onEdit: () => _openEditExpenseScreen(context, tx),
+          onDelete: () => _confirmDeleteExpense(tx),
         );
       },
     );
@@ -818,6 +755,10 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
 
   // ── Timeline Section ───────────────────────────────────────────────────────
   Widget _buildTimelineSection(List<ExpenseModel> allExpenses, NumberFormat currencyFormat) {
+    final accounts = ref.watch(accountListProvider).value ?? const [];
+    final accountsMap = {for (final a in accounts) a.id: a};
+    final privacyModeEnabled = ref.watch(privacyModeEnabledProvider);
+
     // Filter transactions from selected months
     final limitMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1).subtract(const Duration(seconds: 1));
     // Determine the start boundary based on how many months user expanded
@@ -951,8 +892,6 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
                         sortedDates[index].month != sortedDates[index - 1].month ||
                         sortedDates[index].year != sortedDates[index - 1].year;
 
-                    final isExpanded = _expandedTimelineDates.contains(cellDate);
-
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1032,221 +971,68 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
                                 ),
                               ),
 
-                              // Day summary Card content
+                              // Day summary and Transaction cards content
                               Expanded(
                                 child: Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      HapticFeedback.selectionClick();
-                                      setState(() {
-                                        if (isExpanded) {
-                                          _expandedTimelineDates.remove(cellDate);
-                                        } else {
-                                          _expandedTimelineDates.add(cellDate);
-                                        }
-                                      });
-                                    },
-                                    child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 200),
-                                      padding: const EdgeInsets.all(14),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(18),
-                                        border: Border.all(
-                                          color: isExpanded ? AppColors.primaryBlue : const Color(0xFFE2E8F0),
-                                          width: isExpanded ? 1.5 : 1.0,
-                                        ),
-                                        boxShadow: const [
-                                          BoxShadow(
-                                            color: Color(0x05000000),
-                                            blurRadius: 10,
-                                            offset: Offset(0, 4),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              // Circle status indicator
-                                              Container(
-                                                padding: const EdgeInsets.all(6),
-                                                decoration: BoxDecoration(
+                                  padding: const EdgeInsets.only(bottom: 16),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      // Day Header Info: Day name + Net capsule
+                                      Padding(
+                                        padding: const EdgeInsets.only(left: 4, top: 4, bottom: 8, right: 4),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              DateFormat('EEEE, d MMMM').format(cellDate),
+                                              style: const TextStyle(
+                                                color: AppColors.textDark,
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                                              decoration: BoxDecoration(
+                                                color: isNetIncome
+                                                    ? const Color(0xFFD1FAE5)
+                                                    : const Color(0xFFFEE2E2),
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: Text(
+                                                isNetIncome
+                                                    ? '+${currencyFormat.format(netSum)}'
+                                                    : '-${currencyFormat.format(netSum.abs())}',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w900,
                                                   color: isNetIncome
-                                                      ? const Color(0xFFECFDF5)
-                                                      : const Color(0xFFFEF2F2),
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: Icon(
-                                                  isNetIncome ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
-                                                  color: isNetIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                                                  size: 14,
+                                                      ? const Color(0xFF065F46)
+                                                      : const Color(0xFF991B1B),
                                                 ),
                                               ),
-                                              const SizedBox(width: 10),
-
-                                              // Day text / Amount totals
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      isNetIncome
-                                                          ? '+${currencyFormat.format(netSum)}'
-                                                          : '-${currencyFormat.format(netSum.abs())}',
-                                                      style: TextStyle(
-                                                        fontSize: 14,
-                                                        fontWeight: FontWeight.w900,
-                                                        color: isNetIncome
-                                                            ? const Color(0xFF059669)
-                                                            : const Color(0xFFDC2626),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 2),
-                                                    Text(
-                                                      '${dayTxns.length} transaction${dayTxns.length == 1 ? '' : 's'}',
-                                                      style: const TextStyle(
-                                                        color: AppColors.textMuted,
-                                                        fontSize: 11,
-                                                        fontWeight: FontWeight.w600,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-
-                                              // Icons list row
-                                              Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: categories.take(3).map((cat) {
-                                                  return Container(
-                                                    width: 28,
-                                                    height: 28,
-                                                    margin: const EdgeInsets.only(left: 4),
-                                                    decoration: BoxDecoration(
-                                                      color: _getCategoryColor(cat, TransactionType.expense).withValues(alpha: 0.06),
-                                                      shape: BoxShape.circle,
-                                                    ),
-                                                    child: Icon(
-                                                      _getCategoryIcon(cat, TransactionType.expense),
-                                                      color: _getCategoryColor(cat, TransactionType.expense),
-                                                      size: 12,
-                                                    ),
-                                                  );
-                                                }).toList(),
-                                              ),
-
-                                              if (categories.length > 3) ...[
-                                                Container(
-                                                  width: 24,
-                                                  height: 24,
-                                                  margin: const EdgeInsets.only(left: 4),
-                                                  decoration: const BoxDecoration(
-                                                    color: Color(0xFFF1F5F9),
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                  alignment: Alignment.center,
-                                                  child: Text(
-                                                    '+${categories.length - 3}',
-                                                    style: const TextStyle(
-                                                      fontSize: 9,
-                                                      fontWeight: FontWeight.w800,
-                                                      color: AppColors.textMuted,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-
-                                              const SizedBox(width: 8),
-                                              Icon(
-                                                isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                                                color: AppColors.textMuted,
-                                                size: 18,
-                                              ),
-                                            ],
-                                          ),
-
-                                          // Expanded detailed list of items
-                                          if (isExpanded) ...[
-                                            const SizedBox(height: 12),
-                                            const Divider(color: Color(0xFFE2E8F0), height: 1),
-                                            const SizedBox(height: 8),
-                                            Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: List.generate(dayTxns.length, (subIdx) {
-                                                final item = dayTxns[subIdx];
-                                                final isInc = item.type == TransactionType.income;
-                                                final isTrans = item.type == TransactionType.transfer;
-
-                                                return Padding(
-                                                  padding: EdgeInsets.only(bottom: subIdx == dayTxns.length - 1 ? 0.0 : 6.0),
-                                                  child: GestureDetector(
-                                                    onTap: () => AppRoutes.pushEditExpense(
-                                                      context,
-                                                      expenseId: item.id,
-                                                      initialAmount: item.amount,
-                                                      initialCategory: item.category,
-                                                      initialDate: item.date.toLocal(),
-                                                      initialNote: item.note,
-                                                      initialAccountId: item.accountId,
-                                                      initialToAccountId: item.toAccountId,
-                                                      initialType: item.type,
-                                                      initialSubcategory: item.subcategory,
-                                                      initialLatitude: item.latitude,
-                                                      initialLongitude: item.longitude,
-                                                    ),
-                                                    child: Padding(
-                                                      padding: const EdgeInsets.symmetric(vertical: 4.0),
-                                                      child: Row(
-                                                        children: [
-                                                          Icon(
-                                                            _getCategoryIcon(item.category, item.type),
-                                                            color: _getCategoryColor(item.category, item.type),
-                                                            size: 14,
-                                                          ),
-                                                          const SizedBox(width: 8),
-                                                          Expanded(
-                                                            child: Text(
-                                                              item.note.isNotEmpty ? item.note : item.category,
-                                                              maxLines: 1,
-                                                              overflow: TextOverflow.ellipsis,
-                                                              style: const TextStyle(
-                                                                fontSize: 12,
-                                                                fontWeight: FontWeight.w700,
-                                                                color: AppColors.textDark,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                          const SizedBox(width: 8),
-                                                          Text(
-                                                            isInc
-                                                                ? '+${currencyFormat.format(item.amount)}'
-                                                                : isTrans
-                                                                    ? currencyFormat.format(item.amount)
-                                                                    : '-${currencyFormat.format(item.amount)}',
-                                                            style: TextStyle(
-                                                              fontSize: 12,
-                                                              fontWeight: FontWeight.w800,
-                                                              color: isInc
-                                                                  ? const Color(0xFF059669)
-                                                                  : isTrans
-                                                                      ? const Color(0xFF8B5CF6)
-                                                                      : const Color(0xFFDC2626),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                );
-                                              }),
                                             ),
                                           ],
-                                        ],
+                                        ),
                                       ),
-                                    ),
+
+                                      // Transactions rendered directly as standard TransactionCards
+                                      ...dayTxns.map((item) {
+                                        return TransactionCard(
+                                          expense: item,
+                                          accountLabel: item.accountId != null
+                                              ? accountsMap[item.accountId]?.name
+                                              : null,
+                                          toAccountLabel: item.toAccountId != null
+                                              ? accountsMap[item.toAccountId]?.name
+                                              : null,
+                                          maskAmounts: privacyModeEnabled,
+                                          onEdit: () => _openEditExpenseScreen(context, item),
+                                          onDelete: () => _confirmDeleteExpense(item),
+                                        );
+                                      }),
+                                    ],
                                   ),
                                 ),
                               ),

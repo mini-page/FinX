@@ -38,6 +38,9 @@ class AppPreferencesModel {
     this.aiVoiceEnabled = true,
     this.aiScannerEnabled = true,
     this.aiSmsAiEnabled = true,
+    this.fabDoubleTapAction = 'voice',
+    this.fabLongPressAction = 'scanner',
+    this.navbarTabsJson = '',
   });
 
   static const AppPreferencesModel defaults = AppPreferencesModel(
@@ -75,6 +78,9 @@ class AppPreferencesModel {
     aiVoiceEnabled: true,
     aiScannerEnabled: true,
     aiSmsAiEnabled: true,
+    fabDoubleTapAction: 'voice',
+    fabLongPressAction: 'scanner',
+    navbarTabsJson: '',
   );
 
   final String themeModeKey;
@@ -166,6 +172,13 @@ class AppPreferencesModel {
   /// Whether AI-assisted SMS parsing is enabled.
   final bool aiSmsAiEnabled;
 
+  /// Quick Add FAB gesture actions.
+  final String fabDoubleTapAction;
+  final String fabLongPressAction;
+
+  /// JSON-encoded array of active navigation tab IDs.
+  final String navbarTabsJson;
+
   bool get isPinEnabled => pinHash.isNotEmpty;
 
   AppPreferencesModel copyWith({
@@ -207,6 +220,9 @@ class AppPreferencesModel {
     bool? aiVoiceEnabled,
     bool? aiScannerEnabled,
     bool? aiSmsAiEnabled,
+    String? fabDoubleTapAction,
+    String? fabLongPressAction,
+    String? navbarTabsJson,
   }) {
     return AppPreferencesModel(
       themeModeKey: themeModeKey ?? this.themeModeKey,
@@ -260,6 +276,9 @@ class AppPreferencesModel {
       aiVoiceEnabled: aiVoiceEnabled ?? this.aiVoiceEnabled,
       aiScannerEnabled: aiScannerEnabled ?? this.aiScannerEnabled,
       aiSmsAiEnabled: aiSmsAiEnabled ?? this.aiSmsAiEnabled,
+      fabDoubleTapAction: fabDoubleTapAction ?? this.fabDoubleTapAction,
+      fabLongPressAction: fabLongPressAction ?? this.fabLongPressAction,
+      navbarTabsJson: navbarTabsJson ?? this.navbarTabsJson,
     );
   }
 }
@@ -326,6 +345,9 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
     bool aiVoiceEnabled = AppPreferencesModel.defaults.aiVoiceEnabled;
     bool aiScannerEnabled = AppPreferencesModel.defaults.aiScannerEnabled;
     bool aiSmsAiEnabled = AppPreferencesModel.defaults.aiSmsAiEnabled;
+    String fabDoubleTapAction = AppPreferencesModel.defaults.fabDoubleTapAction;
+    String fabLongPressAction = AppPreferencesModel.defaults.fabLongPressAction;
+    String navbarTabsJson = AppPreferencesModel.defaults.navbarTabsJson;
 
     try {
       if (reader.availableBytes > 0) locale = reader.readString();
@@ -388,6 +410,9 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
       if (reader.availableBytes > 0) aiVoiceEnabled = reader.readBool();
       if (reader.availableBytes > 0) aiScannerEnabled = reader.readBool();
       if (reader.availableBytes > 0) aiSmsAiEnabled = reader.readBool();
+      if (reader.availableBytes > 0) fabDoubleTapAction = reader.readString();
+      if (reader.availableBytes > 0) fabLongPressAction = reader.readString();
+      if (reader.availableBytes > 0) navbarTabsJson = reader.readString();
     } catch (_) {
       // Fallback if reading fails
     }
@@ -429,6 +454,9 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
       aiVoiceEnabled: aiVoiceEnabled,
       aiScannerEnabled: aiScannerEnabled,
       aiSmsAiEnabled: aiSmsAiEnabled,
+      fabDoubleTapAction: fabDoubleTapAction,
+      fabLongPressAction: fabLongPressAction,
+      navbarTabsJson: navbarTabsJson,
     );
   }
 
@@ -473,7 +501,10 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
       ..writeBool(obj.aiSmartSearchEnabled)
       ..writeBool(obj.aiVoiceEnabled)
       ..writeBool(obj.aiScannerEnabled)
-      ..writeBool(obj.aiSmsAiEnabled);
+      ..writeBool(obj.aiSmsAiEnabled)
+      ..writeString(obj.fabDoubleTapAction)
+      ..writeString(obj.fabLongPressAction)
+      ..writeString(obj.navbarTabsJson);
   }
 
   List<String> _readStringList(BinaryReader reader) {

@@ -154,6 +154,37 @@ final builtInExpenseCategoryOverridesProvider =
   return builtInOverridesFromJson(json);
 });
 
+
+final fabDoubleTapActionProvider = Provider<String>((ref) {
+  return ref.watch(appPreferencesProvider).value?.fabDoubleTapAction ??
+      AppPreferencesModel.defaults.fabDoubleTapAction;
+});
+
+final fabLongPressActionProvider = Provider<String>((ref) {
+  return ref.watch(appPreferencesProvider).value?.fabLongPressAction ??
+      AppPreferencesModel.defaults.fabLongPressAction;
+});
+
+const defaultNavBarTabIds = <String>[
+  'home',
+  'charts',
+  'category',
+  'tools',
+  'settings',
+];
+
+final navbarTabsProvider = Provider<List<String>>((ref) {
+  final json = ref.watch(appPreferencesProvider).value?.navbarTabsJson ?? '';
+  if (json.isEmpty) return defaultNavBarTabIds;
+  try {
+    final list = (jsonDecode(json) as List).cast<String>();
+    if (list.length >= 3) return list;
+    return defaultNavBarTabIds;
+  } catch (_) {
+    return defaultNavBarTabIds;
+  }
+});
+
 final builtInIncomeCategoryOverridesProvider =
     Provider<List<BuiltInCategoryOverride>>((ref) {
   final json = ref
@@ -845,5 +876,23 @@ class AppPreferencesController {
             ),
           );
     }
+  }
+
+  Future<void> setFabDoubleTapAction(String action) async {
+    await _ref
+        .read(appPreferencesProvider.notifier)
+        .save(_current.copyWith(fabDoubleTapAction: action));
+  }
+
+  Future<void> setFabLongPressAction(String action) async {
+    await _ref
+        .read(appPreferencesProvider.notifier)
+        .save(_current.copyWith(fabLongPressAction: action));
+  }
+
+  Future<void> setNavbarTabs(List<String> tabIds) async {
+    await _ref
+        .read(appPreferencesProvider.notifier)
+        .save(_current.copyWith(navbarTabsJson: jsonEncode(tabIds)));
   }
 }

@@ -9,6 +9,7 @@ import '../../../../core/theme/app_tokens.dart';
 import '../../data/models/recurring_subscription_model.dart';
 import '../../domain/recurrence_parser.dart';
 import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
+import '../../domain/common_services_catalog.dart';
 import '../provider/recurring_subscription_providers.dart';
 import 'subscription_editor_sheet.dart';
 import 'subscription_icons.dart';
@@ -24,6 +25,7 @@ class RecurringToolView extends ConsumerStatefulWidget {
 
 class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
   bool _showAll = false;
+  int _selectedSegment = 0; // 0: All, 1: Subscriptions, 2: Bills & Utilities, 3: Future Due
 
   @override
   Widget build(BuildContext context) {
@@ -59,10 +61,33 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
       minDays = max(0, sortedActive.first.nextBillDate.difference(DateTime.now()).inDays);
     }
 
+    final allNonExpired = subscriptions.where((s) => !s.isExpired).toList();
+    bool isSubCategory(RecurringSubscriptionModel s) =>
+        s.category.toLowerCase().contains('sub') ||
+        (!s.category.toLowerCase().contains('bill') &&
+         !s.category.toLowerCase().contains('util') &&
+         !s.category.toLowerCase().contains('rent'));
+    bool isBillCategory(RecurringSubscriptionModel s) =>
+        s.category.toLowerCase().contains('bill') ||
+        s.category.toLowerCase().contains('util') ||
+        s.category.toLowerCase().contains('rent') ||
+        s.category.toLowerCase().contains('recharge');
+
+    final subList = allNonExpired.where(isSubCategory).toList();
+    final billList = allNonExpired.where(isBillCategory).toList();
+    final futureList = sortedActive.where((s) => s.nextBillDate.difference(DateTime.now()).inDays <= 30).toList();
+
+    final List<RecurringSubscriptionModel> segmentFiltered = switch (_selectedSegment) {
+      1 => subList,
+      2 => billList,
+      3 => futureList,
+      _ => allNonExpired,
+    };
+
     // Determine vertical list count based on expansion state
     final displayedSubscriptions = _showAll
-        ? subscriptions.where((s) => !s.isExpired).toList()
-        : subscriptions.where((s) => !s.isExpired).take(4).toList();
+        ? segmentFiltered
+        : segmentFiltered.take(5).toList();
 
     final expiredSubs = subscriptions.where((s) => s.isExpired).toList();
 
@@ -77,7 +102,7 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Subscriptions',
+                    'Subscriptions & Bills',
                     style: TextStyle(
                       color: AppColors.textDark,
                       fontSize: 22,
@@ -111,6 +136,10 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
             ),
           ],
         ),
+        const SizedBox(height: 16),
+
+        // ── 50+ Common Services Quick-Add Picker (2 Horizontal Scrollable Rows) ──
+        _buildCommonServicesPicker(currency),
         const SizedBox(height: 20),
 
         if (subscriptionState.hasError)
@@ -124,9 +153,73 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
             child: CircularProgressIndicator(),
           ))
         else if (subscriptions.isEmpty)
-          const _StateCard(
-            title: 'No recurring subscriptions',
-            message: 'Create your first subscription to track upcoming bills.',
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x05000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.autorenew_rounded,
+                    size: 28,
+                    color: AppColors.primaryBlue,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'No Subscriptions or Bills Yet',
+                  style: TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Track your OTT services, recharges, rent, and recurring utility bills with renewal reminders.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () => _openEditor(context),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Add Subscription / Bill'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryBlue,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
           )
         else ...[
           // ── Upcoming Section (Horizontal Cards) ──────────────────────────────
@@ -296,19 +389,62 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
             const SizedBox(height: 24),
           ],
 
-          // ── All Subscriptions Section (Vertical List) ───────────────────────
+          // ── Segment Filter Chips ───────────────────────────────────────────
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: [
+                _SegmentFilterChip(
+                  label: 'All',
+                  count: allNonExpired.length,
+                  selected: _selectedSegment == 0,
+                  onTap: () => setState(() => _selectedSegment = 0),
+                ),
+                const SizedBox(width: 8),
+                _SegmentFilterChip(
+                  label: 'Subscriptions',
+                  count: subList.length,
+                  selected: _selectedSegment == 1,
+                  onTap: () => setState(() => _selectedSegment = 1),
+                ),
+                const SizedBox(width: 8),
+                _SegmentFilterChip(
+                  label: 'Recurring Bills',
+                  count: billList.length,
+                  selected: _selectedSegment == 2,
+                  onTap: () => setState(() => _selectedSegment = 2),
+                ),
+                const SizedBox(width: 8),
+                _SegmentFilterChip(
+                  label: 'Future Due',
+                  count: futureList.length,
+                  selected: _selectedSegment == 3,
+                  onTap: () => setState(() => _selectedSegment = 3),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ── Section Header ───────────────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'All Subscriptions',
-                style: TextStyle(
+              Text(
+                switch (_selectedSegment) {
+                  1 => 'Active Subscriptions',
+                  2 => 'Recurring Bills',
+                  3 => 'Future Due (Next 30 Days)',
+                  _ => 'All Recurring Items',
+                },
+                style: const TextStyle(
                   color: AppColors.textDark,
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              if (subscriptions.length > 4)
+              if (segmentFiltered.length > 5)
                 GestureDetector(
                   onTap: () {
                     setState(() {
@@ -316,7 +452,7 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
                     });
                   },
                   child: Text(
-                    _showAll ? 'Show less' : 'View all →',
+                    _showAll ? 'Show less' : 'View all (${segmentFiltered.length}) →',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -327,21 +463,48 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
             ],
           ),
           const SizedBox(height: 12),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: displayedSubscriptions.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final sub = displayedSubscriptions[index];
-              return _SubscriptionTile(
-                subscription: sub,
-                amountText: currency.format(sub.amount),
-                onTap: () => _openEditor(context, subscription: sub),
-                onDelete: () => _confirmDeleteSubscription(context, sub),
-              );
-            },
-          ),
+          if (displayedSubscriptions.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Center(
+                child: Text(
+                  switch (_selectedSegment) {
+                    1 => 'No active subscriptions found.',
+                    2 => 'No recurring bills logged yet.',
+                    3 => 'No bills or renewals due in the next 30 days.',
+                    _ => 'No recurring items yet.',
+                  },
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: displayedSubscriptions.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final sub = displayedSubscriptions[index];
+                return _SubscriptionTile(
+                  subscription: sub,
+                  amountText: currency.format(sub.amount),
+                  onTap: () => _openEditor(context, subscription: sub),
+                  onDelete: () => _confirmDeleteSubscription(context, sub),
+                  onLogPayment: () => _logSubscriptionPayment(context, ref, sub),
+                );
+              },
+            ),
           // ── Expired Subscriptions Section ─────────────────────────────────
           if (expiredSubs.isNotEmpty) ...[
             const SizedBox(height: 20),
@@ -373,6 +536,7 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
                   amountText: currency.format(sub.amount),
                   onTap: () => _openEditor(context, subscription: sub),
                   onDelete: () => _confirmDeleteSubscription(context, sub),
+                  onLogPayment: () => _logSubscriptionPayment(context, ref, sub),
                 );
               },
             ),
@@ -428,13 +592,172 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
     );
   }
 
+  Widget _buildCommonServicesPicker(NumberFormat currency) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.flash_on_rounded, size: 14, color: AppColors.primaryBlue),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'Quick Add 50+ Services & Bills',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textDark,
+              ),
+            ),
+            const Spacer(),
+            const Text(
+              'Tap to pre-fill',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // Row 1: Entertainment, AI, Streaming, Audio, Social (27 presets)
+        SizedBox(
+          height: 48,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: CommonServicesCatalog.digitalAndStreaming.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final preset = CommonServicesCatalog.digitalAndStreaming[index];
+              return _buildServiceQuickChip(preset, currency);
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Row 2: Household Bills, Rent, Utilities, Food & Recharges (27 presets)
+        SizedBox(
+          height: 48,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: CommonServicesCatalog.billsAndUtilities.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final preset = CommonServicesCatalog.billsAndUtilities[index];
+              return _buildServiceQuickChip(preset, currency);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildServiceQuickChip(CommonServicePreset preset, NumberFormat currency) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        _openEditor(
+          context,
+          initialName: preset.name,
+          initialAmount: preset.defaultAmount,
+          initialRecurrence: RecurrenceParsed(
+            count: preset.defaultCount,
+            unit: preset.defaultUnit,
+          ),
+          initialCategory: preset.category,
+          initialIconKey: preset.iconKey,
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x06000000),
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                preset.iconKey,
+                style: const TextStyle(fontSize: 15),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  preset.name,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                Text(
+                  '${currency.format(preset.defaultAmount)} • ${preset.shorthand}',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.add_circle_outline_rounded,
+              size: 14,
+              color: AppColors.primaryBlue,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _openEditor(
     BuildContext context, {
     RecurringSubscriptionModel? subscription,
+    RecurrenceParsed? initialRecurrence,
+    String? initialName,
+    double? initialAmount,
+    String? initialIconKey,
+    String? initialCategory,
   }) async {
     final result = await showSubscriptionEditorSheet(
       context,
       subscription: subscription,
+      initialRecurrence: initialRecurrence,
+      initialName: initialName,
+      initialAmount: initialAmount,
+      initialIconKey: initialIconKey,
+      initialCategory: initialCategory,
     );
     if (result == null) return;
 
@@ -487,12 +810,14 @@ class _SubscriptionTile extends StatelessWidget {
     required this.amountText,
     required this.onTap,
     required this.onDelete,
+    required this.onLogPayment,
   });
 
   final RecurringSubscriptionModel subscription;
   final String amountText;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final VoidCallback onLogPayment;
 
   Color _getSubscriptionColor(String name) {
     final lower = name.toLowerCase();
@@ -637,13 +962,25 @@ class _SubscriptionTile extends StatelessWidget {
                         onSelected: (value) {
                           if (value == 'delete') {
                             onDelete();
+                          } else if (value == 'pay') {
+                            onLogPayment();
                           } else {
                             onTap();
                           }
                         },
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(value: 'edit', child: Text('Edit')),
-                          PopupMenuItem(value: 'delete', child: Text('Delete')),
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'pay',
+                            child: Row(
+                              children: [
+                                Icon(Icons.check_circle_outline_rounded, size: 16, color: AppColors.success),
+                                SizedBox(width: 8),
+                                Text('Log Payment', style: TextStyle(fontWeight: FontWeight.w700)),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                          const PopupMenuItem(value: 'delete', child: Text('Delete')),
                         ],
                       ),
                     ],
@@ -795,6 +1132,79 @@ Future<void> _logSubscriptionPayment(
           'Logged payment of ${ref.read(currencyFormatProvider).format(sub.amount)} for ${sub.name}. Next due: ${DateFormat('MMM d, yyyy').format(nextBill)}.',
         ),
         backgroundColor: AppColors.textDark,
+      ),
+    );
+  }
+}
+
+class _SegmentFilterChip extends StatelessWidget {
+  const _SegmentFilterChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primaryBlue : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.primaryBlue : const Color(0xFFE2E8F0),
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.white : AppColors.textDark,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+              decoration: BoxDecoration(
+                color: selected ? Colors.white.withValues(alpha: 0.25) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                count.toString(),
+                style: TextStyle(
+                  color: selected ? Colors.white : AppColors.textMuted,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 10,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

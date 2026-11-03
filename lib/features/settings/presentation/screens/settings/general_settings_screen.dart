@@ -6,10 +6,13 @@ import '../../../../../core/theme/app_colors.dart';
 import '../../../../../shared/widgets/app_page_header.dart';
 import '../../provider/preferences_providers.dart';
 import '../../../../../shared/widgets/currency_selector_sheet.dart';
+import 'navigation_gestures_settings_screen.dart';
 import 'settings_widgets.dart';
 
 class GeneralSettingsScreen extends ConsumerWidget {
   const GeneralSettingsScreen({super.key});
+
+
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -17,6 +20,7 @@ class GeneralSettingsScreen extends ConsumerWidget {
     final themeMode = ref.watch(appThemeModeProvider);
     final locale = ref.watch(localeProvider);
     final currencySymbol = ref.watch(currencySymbolProvider);
+
 
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
@@ -34,6 +38,29 @@ class GeneralSettingsScreen extends ConsumerWidget {
                 _buildThemeTile(themeMode, controller),
                 _buildCurrencyTile(context, currencySymbol, controller),
                 _buildLanguageTile(locale, controller),
+              ],
+            ),
+            const SizedBox(height: 24),
+            const SettingsSectionHeader(title: 'Navigation & Gestures'),
+            SettingsCard(
+              children: [
+                ListTile(
+                  leading: const SettingsTileIcon(icon: Icons.view_carousel_rounded),
+                  title: const Text(
+                    'Navigation & Gestures',
+                    style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: const Text(
+                    'Customize navbar tabs (3-8) & Quick Add button gestures',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+                  onTap: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const NavigationGesturesSettingsScreen(),
+                    ),
+                  ),
+                ),
               ],
             ),
           ],
@@ -101,7 +128,7 @@ class GeneralSettingsScreen extends ConsumerWidget {
     AppPreferencesController controller,
   ) {
     return ListTile(
-      leading: const SettingsTileIcon(icon: Icons.payments_outlined),
+      leading: const SettingsTileIcon(icon: Icons.attach_money_rounded),
       title: const Text(
         'Currency',
         style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700),
@@ -112,15 +139,16 @@ class GeneralSettingsScreen extends ConsumerWidget {
           Text(
             currentCurrency,
             style: const TextStyle(
-              color: AppColors.textMuted,
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
+              color: AppColors.primaryBlue,
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
             ),
           ),
           const SizedBox(width: 4),
           const Icon(
             Icons.chevron_right_rounded,
             color: AppColors.textMuted,
+            size: 20,
           ),
         ],
       ),

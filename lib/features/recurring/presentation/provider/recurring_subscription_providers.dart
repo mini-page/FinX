@@ -8,26 +8,7 @@ import '../../data/models/recurring_subscription_model.dart';
 import '../../data/repositories/hive_recurring_subscription_repository.dart';
 import '../../domain/repositories/recurring_subscription_repository.dart';
 
-final List<RecurringSeed> defaultSubscriptions = <RecurringSeed>[
-  RecurringSeed(
-    name: 'Netflix',
-    amount: 499,
-    iconKey: '📺',
-    nextBillDate: DateTime.utc(2026, 4, 25),
-  ),
-  RecurringSeed(
-    name: 'Spotify',
-    amount: 119,
-    iconKey: '🎵',
-    nextBillDate: DateTime.utc(2026, 4, 1),
-  ),
-  RecurringSeed(
-    name: 'YouTube',
-    amount: 129,
-    iconKey: '🍿',
-    nextBillDate: DateTime.utc(2026, 4, 8),
-  ),
-];
+final List<RecurringSeed> defaultSubscriptions = <RecurringSeed>[];
 
 final recurringSubscriptionLocalDatasourceProvider =
     Provider<RecurringSubscriptionLocalDatasource>((ref) {
@@ -59,45 +40,30 @@ class RecurringSubscriptionListNotifier
   Future<List<RecurringSubscriptionModel>> build() async {
     try {
       final subscriptions = await _repository.getAllSubscriptions();
-      if (subscriptions.isNotEmpty) {
-        return subscriptions;
+      
+      // Purge legacy dummy seeds if present
+      final cleaned = <RecurringSubscriptionModel>[];
+      for (final s in subscriptions) {
+        final isLegacySeed = (s.name == 'Netflix' && s.amount == 499) ||
+            (s.name == 'Spotify' && s.amount == 119) ||
+            (s.name == 'YouTube' && s.amount == 129);
+        if (isLegacySeed) {
+          await _repository.deleteSubscription(s.id);
+        } else {
+          cleaned.add(s);
+        }
       }
-
-      final seeded = defaultSubscriptions
-          .map(
-            (seed) => RecurringSubscriptionModel.create(
-              name: seed.name,
-              amount: seed.amount,
-              nextBillDate: seed.nextBillDate,
-              iconKey: seed.iconKey,
-            ),
-          )
-          .toList(growable: false);
-
-      for (final subscription in seeded) {
-        await _repository.saveSubscription(subscription);
-      }
-
-      return seeded;
+      return cleaned;
     } catch (e, stackTrace) {
       if (kDebugMode) {
         dev.log(
-          'Failed to fetch or seed subscriptions',
+          'Failed to fetch subscriptions',
           error: e,
           stackTrace: stackTrace,
           name: 'RecurringSubscriptionListNotifier',
         );
       }
-      return defaultSubscriptions
-          .map(
-            (seed) => RecurringSubscriptionModel.create(
-              name: seed.name,
-              amount: seed.amount,
-              nextBillDate: seed.nextBillDate,
-              iconKey: seed.iconKey,
-            ),
-          )
-          .toList(growable: false);
+      return const <RecurringSubscriptionModel>[];
     }
   }
 

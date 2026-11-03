@@ -5,7 +5,6 @@ import 'package:expensio/features/expense/presentation/provider/expense_provider
 import 'package:expensio/features/recurring/presentation/provider/recurring_subscription_providers.dart';
 import 'package:expensio/features/categories/presentation/provider/budget_providers.dart';
 import 'package:expensio/features/categories/presentation/provider/budget_state.dart';
-import 'package:expensio/features/categories/data/models/budget_model.dart';
 import '../../data/models/achievement_model.dart';
 
 /// Computes gamification state from expense data.
@@ -15,8 +14,6 @@ final gamificationProvider = Provider<GamificationState>((ref) {
   final subscriptions =
       ref.watch(recurringSubscriptionListProvider).value ?? const <dynamic>[];
   final budgetState = ref.watch(monthBudgetProvider).value;
-  final budgetTargets =
-      ref.watch(budgetTargetsProvider).value ?? defaultBudgetTargets;
 
   // ── Streak computation ──────────────────────────────────────────────────────
 
@@ -54,7 +51,7 @@ final gamificationProvider = Provider<GamificationState>((ref) {
     if (prev == null) {
       tempStreak = 1;
     } else {
-      final diff = d.difference(prev!).inDays;
+      final diff = d.difference(prev).inDays;
       if (diff == 1) {
         tempStreak++;
       } else {
@@ -108,7 +105,6 @@ final gamificationProvider = Provider<GamificationState>((ref) {
   if (expenseCategories.length >= 5) unlocked.add(AchievementId.categoryExplorer);
   if (monthSaved) unlocked.add(AchievementId.saver);
   if (hasSplit) unlocked.add(AchievementId.splitter);
-  if (false) unlocked.add(AchievementId.receiptScanner); // TODO: connect to scanner
   if (subscriptions.length >= 3) unlocked.add(AchievementId.subscriptionTracker);
   if (hasNightOwl) unlocked.add(AchievementId.nightOwl);
   if (hasEarlyBird) unlocked.add(AchievementId.earlyBird);

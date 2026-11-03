@@ -8,6 +8,7 @@ import '../features/expense/presentation/screens/unified_scanner_screen.dart';
 import 'package:expensio/features/settings/presentation/screens/settings_screen.dart';
 import '../features/expense/presentation/screens/upi_scanner_screen.dart';
 import '../features/expense/presentation/screens/calendar_view_screen.dart';
+import '../features/accounts/presentation/screens/tools_pages/location_map_screen.dart';
 
 /// Centralised navigation helpers for Expensio.
 ///
@@ -27,6 +28,7 @@ abstract final class AppRoutes {
     String? initialAccountId,
     String? initialToAccountId,
     TransactionType initialType = TransactionType.expense,
+    String? initialSubcategory,
   }) {
     return Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -38,6 +40,7 @@ abstract final class AppRoutes {
           initialAccountId: initialAccountId,
           initialToAccountId: initialToAccountId,
           initialType: initialType,
+          initialSubcategory: initialSubcategory,
         ),
       ),
     );
@@ -179,6 +182,13 @@ abstract final class AppRoutes {
   }
 
 
+
+  /// Push [LocationMapScreen] to explore transactions on the radar map.
+  static Future<void> pushLocationMap(BuildContext context) {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => const LocationMapScreen()),
+    );
+  }
 
   // ── Scanner (legacy alias) ─────────────────────────────────────────────────
 

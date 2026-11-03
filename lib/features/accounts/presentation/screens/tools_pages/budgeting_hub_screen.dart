@@ -15,7 +15,9 @@ import 'package:expensio/features/categories/presentation/screens/categories/bud
 enum _BudgetTab { monthly, weekly }
 
 class BudgetingHubScreen extends ConsumerStatefulWidget {
-  const BudgetingHubScreen({super.key});
+  const BudgetingHubScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   ConsumerState<BudgetingHubScreen> createState() => _BudgetingHubScreenState();
@@ -56,6 +58,7 @@ class _BudgetingHubScreenState extends ConsumerState<BudgetingHubScreen>
       backgroundColor: AppColors.backgroundLight,
       appBar: GradientAppBar(
         title: 'Budgeting',
+        showBackButton: widget.showBackButton,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Padding(

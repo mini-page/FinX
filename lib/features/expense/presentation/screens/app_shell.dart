@@ -19,6 +19,11 @@ import '../provider/notifications_provider.dart';
 import 'home_screen.dart';
 import 'package:expensio/features/analytics/presentation/screens/stats_screen.dart';
 import 'voice_entry_screen.dart';
+import 'package:expensio/features/accounts/presentation/screens/tools_pages/subscriptions_screen.dart';
+import 'package:expensio/features/accounts/presentation/screens/tools_pages/split_bill_screen.dart';
+import 'package:expensio/features/accounts/presentation/screens/tools_pages/budgeting_hub_screen.dart';
+import 'package:expensio/features/accounts/presentation/screens/tools_pages/savings_goals_screen.dart';
+import 'package:expensio/features/accounts/presentation/screens/tools_pages/location_map_screen.dart';
 import '../../../sms_parser/presentation/screens/sms_settings_sheet.dart';
 import '../../../sms_parser/domain/sms_parser_engine.dart';
 
@@ -209,19 +214,109 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
   }
 
-  List<Widget> _buildPages() {
-    return [
-      const HomeScreen(),
-      StatsScreen(),
-      const CategoriesScreen(),
-      const AccountsScreen(),
-      const SettingsScreen(),
-    ];
+  Widget _buildPageForTab(String id) {
+    switch (id) {
+      case 'home':
+        return const HomeScreen();
+      case 'charts':
+        return StatsScreen();
+      case 'category':
+        return const CategoriesScreen();
+      case 'tools':
+      case 'accounts':
+        return const AccountsScreen();
+      case 'subscriptions':
+        return const SubscriptionsScreen(showBackButton: false);
+      case 'split_bill':
+        return const SplitBillScreen(showBackButton: false);
+      case 'budget':
+        return const BudgetingHubScreen(showBackButton: false);
+      case 'goals':
+        return const SavingsGoalsScreen(showBackButton: false);
+      case 'radar':
+        return const LocationMapScreen(showBackButton: false);
+      case 'settings':
+        return const SettingsScreen();
+      default:
+        return const HomeScreen();
+    }
+  }
+
+  List<Widget> _buildPages(List<String> tabIds) {
+    return tabIds.map(_buildPageForTab).toList();
+  }
+
+  Future<void> _executeFabAction(String action) async {
+    switch (action) {
+      case 'scanner':
+        if (mounted) await AppRoutes.pushUnifiedScanner(context);
+        break;
+      case 'voice':
+        if (mounted) await _showVoiceEntry();
+        break;
+      case 'subscriptions':
+        if (mounted) {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const SubscriptionsScreen(showBackButton: true),
+            ),
+          );
+        }
+        break;
+      case 'split':
+        if (mounted) {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const SplitBillScreen(showBackButton: true),
+            ),
+          );
+        }
+        break;
+      case 'goals':
+        if (mounted) {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const SavingsGoalsScreen(showBackButton: true),
+            ),
+          );
+        }
+        break;
+      case 'budget':
+        if (mounted) {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const BudgetingHubScreen(showBackButton: true),
+            ),
+          );
+        }
+        break;
+      case 'radar':
+        if (mounted) {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const LocationMapScreen(showBackButton: true),
+            ),
+          );
+        }
+        break;
+      case 'add':
+      default:
+        await _openAddExpenseScreen();
+        break;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final pages = _buildPages();
+    final tabIds = ref.watch(navbarTabsProvider);
+    final navTabs = tabIds
+        .map((id) => kAllAvailableNavBarTabs[id])
+        .whereType<NavBarTabData>()
+        .toList();
+    final pages = _buildPages(tabIds);
+    if (_selectedIndex >= pages.length) {
+      _selectedIndex = 0;
+    }
 
     // ── Sync widget data whenever accounts / expenses / currency change ──
     ref.listen<WidgetDataPayload?>(
@@ -299,7 +394,9 @@ class _AppShellState extends ConsumerState<AppShell> {
               child: IgnorePointer(
                 ignoring: !isHome,
                 child: PowerFab(
-                  onQuickAdd: _openAddExpenseScreen,
+                  onTap: _openAddExpenseScreen,
+                  onDoubleTap: () => _executeFabAction(ref.read(fabDoubleTapActionProvider)),
+                  onLongPress: () => _executeFabAction(ref.read(fabLongPressActionProvider)),
                 ),
               ),
             ),
@@ -312,7 +409,8 @@ class _AppShellState extends ConsumerState<AppShell> {
             right: 0,
             bottom: _navBarVisible ? 0 : -130,
             child: FloatingNavBar(
-              selectedIndex: _selectedIndex,
+              tabs: navTabs,
+              selectedIndex: _selectedIndex.clamp(0, pages.length - 1),
               onTap: (index) {
                 setState(() {
                   _selectedIndex = index;

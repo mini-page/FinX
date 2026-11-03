@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_tokens.dart';
@@ -10,12 +9,13 @@ import '../provider/gamification_providers.dart';
 import '../../data/models/achievement_model.dart';
 
 class GamificationScreen extends ConsumerWidget {
-  const GamificationScreen({super.key});
+  const GamificationScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gamificationProvider);
-    final currency = ref.watch(currencyFormatProvider);
 
     final unlockedCount = state.unlockedAchievements.length;
     final totalCount = AchievementDef.all.length;
@@ -23,7 +23,7 @@ class GamificationScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      appBar: const GradientAppBar(title: 'Gamification'),
+      appBar: GradientAppBar(title: 'Gamification', showBackButton: showBackButton),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
         child: Column(

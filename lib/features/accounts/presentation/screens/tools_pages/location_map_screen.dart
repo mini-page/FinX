@@ -12,6 +12,8 @@ import 'package:expensio/routes/app_routes.dart';
 import 'package:expensio/shared/widgets/app_page_header.dart';
 import 'package:expensio/shared/widgets/app_search_bar.dart';
 
+import 'package:expensio/features/accounts/presentation/provider/account_providers.dart';
+import 'package:expensio/features/expense/presentation/widgets/transaction_card.dart';
 class _DistanceExpensePair {
   final ExpenseModel expense;
   final double distance;
@@ -20,7 +22,9 @@ class _DistanceExpensePair {
 }
 
 class LocationMapScreen extends ConsumerStatefulWidget {
-  const LocationMapScreen({super.key});
+  const LocationMapScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   ConsumerState<LocationMapScreen> createState() => _LocationMapScreenState();
@@ -101,55 +105,6 @@ class _LocationMapScreenState extends ConsumerState<LocationMapScreen> {
     }
   }
 
-  IconData _getCategoryIcon(String category, TransactionType type) {
-    if (type == TransactionType.transfer) return Icons.swap_horiz_rounded;
-    final catLower = category.toLowerCase();
-    if (catLower.contains('food') || catLower.contains('restaurant') || catLower.contains('cafe')) {
-      return Icons.restaurant_rounded;
-    }
-    if (catLower.contains('travel') || catLower.contains('car') || catLower.contains('uber') || catLower.contains('transport')) {
-      return Icons.directions_car_rounded;
-    }
-    if (catLower.contains('shopping') || catLower.contains('shop') || catLower.contains('clothing')) {
-      return Icons.shopping_bag_rounded;
-    }
-    if (catLower.contains('bill') || catLower.contains('rent') || catLower.contains('utility') || catLower.contains('electricity')) {
-      return Icons.receipt_long_rounded;
-    }
-    if (catLower.contains('salary') || catLower.contains('income') || catLower.contains('paycheck')) {
-      return Icons.account_balance_rounded;
-    }
-    if (catLower.contains('entertainment') || catLower.contains('movie') || catLower.contains('game')) {
-      return Icons.videogame_asset_rounded;
-    }
-    if (catLower.contains('health') || catLower.contains('medical') || catLower.contains('doctor')) {
-      return Icons.medical_services_rounded;
-    }
-    if (catLower.contains('education') || catLower.contains('book') || catLower.contains('school')) {
-      return Icons.school_rounded;
-    }
-    return type == TransactionType.income ? Icons.add_circle_outline_rounded : Icons.payments_rounded;
-  }
-
-  Color _getCategoryColor(String category, TransactionType type) {
-    if (type == TransactionType.transfer) return const Color(0xFFF59E0B); // Amber
-    if (type == TransactionType.income) return const Color(0xFF10B981); // Green
-    final catLower = category.toLowerCase();
-    if (catLower.contains('food') || catLower.contains('restaurant') || catLower.contains('cafe')) {
-      return const Color(0xFFF97316); // Orange
-    }
-    if (catLower.contains('travel') || catLower.contains('car') || catLower.contains('uber') || catLower.contains('transport')) {
-      return const Color(0xFF06B6D4); // Cyan
-    }
-    if (catLower.contains('shopping') || catLower.contains('shop') || catLower.contains('clothing')) {
-      return const Color(0xFFEC4899); // Pink
-    }
-    if (catLower.contains('bill') || catLower.contains('rent') || catLower.contains('utility')) {
-      return const Color(0xFF8B5CF6); // Purple
-    }
-    return AppColors.primaryBlue;
-  }
-
   @override
   Widget build(BuildContext context) {
     final expensesAsync = ref.watch(expenseListProvider);
@@ -159,6 +114,7 @@ class _LocationMapScreenState extends ConsumerState<LocationMapScreen> {
       backgroundColor: AppColors.backgroundLight,
       appBar: GradientAppBar(
         title: 'Location Mapping',
+        showBackButton: widget.showBackButton,
         actions: [
           IconButton(
             icon: Icon(
@@ -549,298 +505,72 @@ class _LocationMapScreenState extends ConsumerState<LocationMapScreen> {
   }
 
   Widget _buildSelectedPreviewCard(ExpenseModel txn, String currencySymbol) {
-    final isIncome = txn.type == TransactionType.income;
-    final isTransfer = txn.type == TransactionType.transfer;
-    final catColor = _getCategoryColor(txn.category, txn.type);
-    final distance = Geolocator.distanceBetween(
-      _currentPosition!.latitude,
-      _currentPosition!.longitude,
-      txn.latitude!,
-      txn.longitude!,
-    );
-    final distanceText = distance < 1000
-        ? '${distance.toStringAsFixed(0)} m away'
-        : '${(distance / 1000.0).toStringAsFixed(1)} km away';
+    final accounts = ref.watch(accountListProvider).value ?? const [];
+    final accountsMap = {for (final a in accounts) a.id: a};
+    final privacyModeEnabled = ref.watch(privacyModeEnabledProvider);
 
-    return Container(
+    return TransactionCard(
       key: ValueKey(txn.id),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: catColor.withValues(alpha: 0.3), width: 1.5),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 16,
-            offset: Offset(0, 8),
-          ),
-        ],
+      expense: txn,
+      initiallyExpanded: true,
+      accountLabel: txn.accountId != null ? accountsMap[txn.accountId]?.name : null,
+      toAccountLabel: txn.toAccountId != null ? accountsMap[txn.toAccountId]?.name : null,
+      maskAmounts: privacyModeEnabled,
+      showDateInCollapsed: true,
+      onEdit: () => AppRoutes.pushEditExpense(
+        context,
+        expenseId: txn.id,
+        initialAmount: txn.amount,
+        initialCategory: txn.category,
+        initialDate: txn.date.toLocal(),
+        initialNote: txn.note,
+        initialAccountId: txn.accountId,
+        initialToAccountId: txn.toAccountId,
+        initialType: txn.type,
+        initialSubcategory: txn.subcategory,
+        initialLatitude: txn.latitude,
+        initialLongitude: txn.longitude,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: catColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _getCategoryIcon(txn.category, txn.type),
-                  color: catColor,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isTransfer ? 'Transfer' : txn.category,
-                      style: const TextStyle(
-                        color: AppColors.textDark,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      DateFormat('dd MMM yyyy, hh:mm a').format(txn.date.toLocal()),
-                      style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                '${isIncome ? "+" : "-"}$currencySymbol${txn.amount.toStringAsFixed(0)}',
-                style: TextStyle(
-                  color: isTransfer
-                      ? AppColors.textDark
-                      : isIncome
-                          ? AppColors.success
-                          : AppColors.danger,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          if (txn.note.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.backgroundLight,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                txn.note,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                  height: 1.4,
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.location_on, size: 14, color: AppColors.textMuted),
-                  const SizedBox(width: 4),
-                  Text(
-                    distanceText,
-                    style: const TextStyle(
-                      color: AppColors.textMuted,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-              TextButton.icon(
-                onPressed: () async {
-                  await AppRoutes.pushEditExpense(
-                    context,
-                    expenseId: txn.id,
-                    initialAmount: txn.amount,
-                    initialCategory: txn.category,
-                    initialDate: txn.date.toLocal(),
-                    initialNote: txn.note,
-                    initialAccountId: txn.accountId,
-                    initialToAccountId: txn.toAccountId,
-                    initialType: txn.type,
-                    initialSubcategory: txn.subcategory,
-                    initialLatitude: txn.latitude,
-                    initialLongitude: txn.longitude,
-                  );
-                  // Refresh state on return
-                  setState(() {});
-                },
-                icon: const Icon(Icons.edit_rounded, size: 14),
-                label: const Text('Edit Transaction', style: TextStyle(fontSize: 12)),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.primaryBlue,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+      onDelete: () {
+        ref.read(expenseControllerProvider).deleteExpense(txn.id);
+        setState(() => _selectedTransaction = null);
+      },
     );
   }
 
   Widget _buildListView(List<_DistanceExpensePair> pairs, String currencySymbol) {
+    final accounts = ref.watch(accountListProvider).value ?? const [];
+    final accountsMap = {for (final a in accounts) a.id: a};
+    final privacyModeEnabled = ref.watch(privacyModeEnabledProvider);
+
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
       itemCount: pairs.length,
       itemBuilder: (context, index) {
         final pair = pairs[index];
         final txn = pair.expense;
-        final isIncome = txn.type == TransactionType.income;
-        final isTransfer = txn.type == TransactionType.transfer;
-        final catColor = _getCategoryColor(txn.category, txn.type);
-        final distanceText = pair.distance < 1000
-            ? '${pair.distance.toStringAsFixed(0)} m away'
-            : '${(pair.distance / 1000.0).toStringAsFixed(1)} km away';
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
-              BoxShadow(
-                color: AppColors.cardShadow,
-                blurRadius: 12,
-                offset: Offset(0, 4),
-              ),
-            ],
+        return TransactionCard(
+          expense: txn,
+          accountLabel: txn.accountId != null ? accountsMap[txn.accountId]?.name : null,
+          toAccountLabel: txn.toAccountId != null ? accountsMap[txn.toAccountId]?.name : null,
+          maskAmounts: privacyModeEnabled,
+          showDateInCollapsed: true,
+          onEdit: () => AppRoutes.pushEditExpense(
+            context,
+            expenseId: txn.id,
+            initialAmount: txn.amount,
+            initialCategory: txn.category,
+            initialDate: txn.date.toLocal(),
+            initialNote: txn.note,
+            initialAccountId: txn.accountId,
+            initialToAccountId: txn.toAccountId,
+            initialType: txn.type,
+            initialSubcategory: txn.subcategory,
+            initialLatitude: txn.latitude,
+            initialLongitude: txn.longitude,
           ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () async {
-                await AppRoutes.pushEditExpense(
-                  context,
-                  expenseId: txn.id,
-                  initialAmount: txn.amount,
-                  initialCategory: txn.category,
-                  initialDate: txn.date.toLocal(),
-                  initialNote: txn.note,
-                  initialAccountId: txn.accountId,
-                  initialToAccountId: txn.toAccountId,
-                  initialType: txn.type,
-                  initialSubcategory: txn.subcategory,
-                  initialLatitude: txn.latitude,
-                  initialLongitude: txn.longitude,
-                );
-                setState(() {});
-              },
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: catColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        _getCategoryIcon(txn.category, txn.type),
-                        color: catColor,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                isTransfer ? 'Transfer' : txn.category,
-                                style: const TextStyle(
-                                  color: AppColors.textDark,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: AppColors.backgroundLight,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.location_on, size: 10, color: AppColors.textMuted),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      distanceText,
-                                      style: const TextStyle(color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            txn.note.isNotEmpty ? txn.note : 'No description',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: txn.note.isNotEmpty ? AppColors.textSecondary : AppColors.textMuted,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          '${isIncome ? "+" : "-"}$currencySymbol${txn.amount.toStringAsFixed(0)}',
-                          style: TextStyle(
-                            color: isTransfer
-                                ? AppColors.textDark
-                                : isIncome
-                                    ? AppColors.success
-                                    : AppColors.danger,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          DateFormat('dd MMM').format(txn.date.toLocal()),
-                          style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          onDelete: () => ref.read(expenseControllerProvider).deleteExpense(txn.id),
         );
       },
     );

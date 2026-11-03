@@ -6,18 +6,40 @@ import '../../../../core/theme/app_colors.dart';
 class PowerFab extends StatelessWidget {
   const PowerFab({
     super.key,
-    required this.onQuickAdd,
+    this.onTap,
+    this.onDoubleTap,
+    this.onLongPress,
+    this.onQuickAdd,
   });
 
-  final VoidCallback onQuickAdd;
+  final VoidCallback? onTap;
+  final VoidCallback? onDoubleTap;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onQuickAdd;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
-        onQuickAdd();
+        if (onTap != null) {
+          onTap!();
+        } else {
+          onQuickAdd?.call();
+        }
       },
+      onDoubleTap: onDoubleTap != null
+          ? () {
+              HapticFeedback.mediumImpact();
+              onDoubleTap!();
+            }
+          : null,
+      onLongPress: onLongPress != null
+          ? () {
+              HapticFeedback.heavyImpact();
+              onLongPress!();
+            }
+          : null,
       child: Container(
         width: 56,
         height: 56,

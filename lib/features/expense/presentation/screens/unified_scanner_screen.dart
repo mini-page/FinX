@@ -4,10 +4,11 @@ import 'dart:ui';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
-
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../core/ai/ai_model_providers.dart';
 import '../../../../core/ai/ai_result.dart';
@@ -15,19 +16,16 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../shared/widgets/app_back_button.dart';
 
-/// A unified scan-and-log screen combining two modes in a single camera view.
+/// A unified scan-and-log screen combining three modes in a single, continuous camera view:
 ///
 /// **Tab 0 – Bill Scan (default)**
-/// Live barcode / QR scanner. Detects codes on receipts, bills, and UPI
-/// QR codes, then opens [AddExpenseScreen] with pre-filled amount / merchant.
+/// Live barcode / QR scanner for receipts and bills. Detects codes and pre-fills the expense form.
 ///
-/// **Tab 1 – AI Scan**
-/// Live camera with a shutter button (or gallery picker). The captured photo
-/// is sent to Gemini Vision which identifies the product and pre-fills the
-/// expense form.
+/// **Tab 1 – UPI Pay**
+/// Scans UPI QR codes (`upi://pay`) and launches the direct UPI payment flow.
 ///
-/// A segmented tab switcher at the bottom lets the user toggle between modes
-/// without leaving the screen — no extra taps or bottom sheets needed.
+/// **Tab 2 – AI Scan**
+/// Camera capture sent to Gemini Vision to identify products and automatically pre-fill expenses.
 class UnifiedScannerScreen extends ConsumerStatefulWidget {
   const UnifiedScannerScreen({
     super.key,
@@ -35,7 +33,7 @@ class UnifiedScannerScreen extends ConsumerStatefulWidget {
     this.returnResult = false,
   });
 
-  /// 0 = Bill Scan, 1 = AI Scan.
+  /// 0 = Bill, 1 = UPI, 2 = AI Scan.
   final int initialTab;
   final bool returnResult;
 
@@ -45,11 +43,10 @@ class UnifiedScannerScreen extends ConsumerStatefulWidget {
 }
 
 class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
-    with TickerProviderStateMixin {
-  // ── Controllers ───────────────────────────────────────────────────────────
+    with TickerProviderStateMixin, WidgetsBindingObserver {
+  // ── Controller (Single continuous hardware session) ───────────────────────
 
-  late final MobileScannerController _billController;
-  late final MobileScannerController _aiController;
+  late final MobileScannerController _controller;
 
   /// Drives the shutter button enter/exit animation when the AI tab is active.
   late final AnimationController _shutterAnim;
@@ -61,12 +58,13 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
   late int _tabIndex;
   bool _billProcessed = false;
   bool _upiProcessed = false;
+  bool _isPickingBill = false;
   bool _isPickingUpi = false;
 
   // AI tab state
   String? _capturedImagePath;
   bool _isCapturing = false;
-  bool _isPicking = false;
+  bool _isPickingAi = false;
   bool _isProcessing = false;
   final GlobalKey _previewKey = GlobalKey();
   bool _showShutterFlash = false;
@@ -76,10 +74,13 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
   @override
   void initState() {
     super.initState();
-    _tabIndex = widget.initialTab;
+    WidgetsBinding.instance.addObserver(this);
+    _tabIndex = widget.initialTab.clamp(0, 2);
 
-    _billController = MobileScannerController();
-    _aiController = MobileScannerController(autoStart: false);
+    _controller = MobileScannerController(
+      detectionSpeed: DetectionSpeed.normal,
+      returnImage: false,
+    );
 
     _shutterAnim = AnimationController(
       vsync: this,
@@ -95,18 +96,48 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
     );
 
     if (_tabIndex == 2) {
-      // Start AI camera instead of bill camera when launched on AI tab.
-      _billController.stop();
-      _aiController.start();
       _shutterAnim.forward();
+    }
+    _checkCameraPermission();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      try {
+        _controller.start();
+      } catch (_) {}
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      try {
+        _controller.stop();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _checkCameraPermission() async {
+    final status = await Permission.camera.status;
+    if (!status.isGranted) {
+      final res = await Permission.camera.request();
+      if (res.isGranted && mounted) {
+        try {
+          await _controller.start();
+        } catch (_) {}
+        if (mounted) setState(() {});
+      }
+    } else {
+      try {
+        await _controller.start();
+      } catch (_) {}
+      if (mounted) setState(() {});
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _shutterAnim.dispose();
-    _billController.dispose();
-    _aiController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -114,18 +145,16 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
 
   void _switchTab(int index) {
     if (index == _tabIndex) return;
+    HapticFeedback.selectionClick();
     setState(() {
       _tabIndex = index;
       _capturedImagePath = null;
       _isProcessing = false;
     });
-    if (index == 1) {
-      _billController.stop();
-      _aiController.start();
+
+    if (index == 2) {
       _shutterAnim.forward();
     } else {
-      _aiController.stop();
-      _billController.start();
       _shutterAnim.reverse();
     }
   }
@@ -206,7 +235,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
         return;
       }
 
-      final capture = await _billController.analyzeImage(path);
+      final capture = await _controller.analyzeImage(path);
       if (!mounted) return;
       setState(() => _isPickingUpi = false);
 
@@ -222,26 +251,6 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
       if (mounted) setState(() => _isPickingUpi = false);
     }
   }
-
-  /*
-    if (index == _tabIndex) return;
-    setState(() {
-      _tabIndex = index;
-      _capturedImagePath = null;
-      _isProcessing = false;
-    });
-    if (index == 0) {
-      _aiController.stop();
-      _billController.start();
-      _shutterAnim.reverse();
-    } else {
-      _billController.stop();
-      _aiController.start();
-      _shutterAnim.forward();
-    }
-  }
-
-  */
 
   // ── Bill scan logic ───────────────────────────────────────────────────────
 
@@ -279,29 +288,35 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
       });
       return;
     }
-    AppRoutes.replaceWithAddExpense(context,
-        initialAmount: amount, initialNote: note);
+    AppRoutes.replaceWithAddExpense(
+      context,
+      initialAmount: amount,
+      initialNote: note,
+    );
   }
 
   Future<void> _billPickGallery() async {
-    if (_isPicking || _billProcessed) return;
-    setState(() => _isPicking = true);
+    if (_isPickingBill || _billProcessed) return;
+    setState(() => _isPickingBill = true);
 
     try {
-      final result = await FilePicker.pickFiles(type: FileType.image, allowMultiple: false);
+      final result = await FilePicker.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
       if (!mounted) return;
 
       final path = result?.files.singleOrNull?.path;
       if (path == null) {
-        setState(() => _isPicking = false);
+        setState(() => _isPickingBill = false);
         return;
       }
 
-      final capture = await _billController.analyzeImage(path);
+      final capture = await _controller.analyzeImage(path);
       if (!mounted) return;
 
       if (capture == null || capture.barcodes.isEmpty) {
-        setState(() => _isPicking = false);
+        setState(() => _isPickingBill = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No QR code found in the image.')),
         );
@@ -310,7 +325,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
       _onBillDetect(capture);
     } catch (_) {
       if (mounted) {
-        setState(() => _isPicking = false);
+        setState(() => _isPickingBill = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not read QR from image.')),
         );
@@ -327,6 +342,8 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
       _showShutterFlash = true;
     });
 
+    HapticFeedback.mediumImpact();
+
     // Tactile camera shutter flash
     Future.delayed(const Duration(milliseconds: 100), () {
       if (mounted) setState(() => _showShutterFlash = false);
@@ -340,7 +357,8 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
       }
 
       final pixelRatio = MediaQuery.of(context).devicePixelRatio;
-      final image = await boundary.toImage(pixelRatio: pixelRatio.clamp(1.5, 3.0));
+      final image =
+          await boundary.toImage(pixelRatio: pixelRatio.clamp(1.5, 3.0));
       final byteData = await image.toByteData(format: ImageByteFormat.png);
       if (byteData == null) {
         throw Exception('Failed to encode camera frame');
@@ -368,18 +386,21 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
   }
 
   Future<void> _aiPickGallery() async {
-    if (_isPicking || _isProcessing) return;
-    setState(() => _isPicking = true);
+    if (_isPickingAi || _isProcessing) return;
+    setState(() => _isPickingAi = true);
     try {
-      final result = await FilePicker.pickFiles(type: FileType.image, allowMultiple: false);
+      final result = await FilePicker.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
       if (!mounted) return;
       final path = result?.files.singleOrNull?.path;
       setState(() {
-        _isPicking = false;
+        _isPickingAi = false;
         if (path != null) _capturedImagePath = path;
       });
     } catch (_) {
-      if (mounted) setState(() => _isPicking = false);
+      if (mounted) setState(() => _isPickingAi = false);
     }
   }
 
@@ -404,7 +425,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
 
     setState(() => _isProcessing = true);
 
-    // Optional barcode hint extraction via bill controller.
+    // Optional barcode hint extraction via controller.
     String? barcodeHint;
     try {
       final dir = await getTemporaryDirectory();
@@ -412,7 +433,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
       final tmpPath =
           '${dir.path}/xpens_bc_${DateTime.now().millisecondsSinceEpoch}.$ext';
       await File(imagePath).copy(tmpPath);
-      final capture = await _billController.analyzeImage(tmpPath);
+      final capture = await _controller.analyzeImage(tmpPath);
       final raw = capture?.barcodes.firstOrNull?.rawValue;
       if (raw != null && raw.isNotEmpty) barcodeHint = raw;
     } catch (_) {
@@ -446,7 +467,8 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
     } catch (_) {
       if (mounted) {
         _showAiFailureSheet(
-            "Couldn't identify this product. Try a clearer, closer photo.");
+          "Couldn't identify this product. Try a clearer, closer photo.",
+        );
       }
     }
   }
@@ -471,21 +493,30 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                 color: const Color(0xFFFFF3CD),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(Icons.auto_awesome_rounded,
-                  color: Color(0xFFE09D00), size: 32),
+              child: const Icon(
+                Icons.auto_awesome_rounded,
+                color: Color(0xFFE09D00),
+                size: 32,
+              ),
             ),
             const SizedBox(height: 16),
-            const Text('AI Scanner Not Configured',
-                style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.textDark)),
+            const Text(
+              'AI Scanner Not Configured',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textDark,
+              ),
+            ),
             const SizedBox(height: 8),
             const Text(
               'To use AI product scanning, add your Gemini API key and enable AI Features in Settings.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  color: AppColors.textMuted, fontSize: 13, height: 1.5),
+                color: AppColors.textMuted,
+                fontSize: 13,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -495,11 +526,14 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primaryBlue,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                child: const Text('Got it',
-                    style: TextStyle(fontWeight: FontWeight.w800)),
+                child: const Text(
+                  'Got it',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
               ),
             ),
           ],
@@ -527,20 +561,31 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                 color: AppColors.danger.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Icon(Icons.image_search_rounded,
-                  color: AppColors.danger, size: 32),
+              child: Icon(
+                Icons.image_search_rounded,
+                color: AppColors.danger,
+                size: 32,
+              ),
             ),
             const SizedBox(height: 16),
-            const Text("Couldn't identify product",
-                style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.textDark)),
+            const Text(
+              "Couldn't identify product",
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textDark,
+              ),
+            ),
             const SizedBox(height: 8),
-            Text(reason,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: AppColors.textMuted, fontSize: 13, height: 1.5)),
+            Text(
+              reason,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
             const SizedBox(height: 24),
             Row(
               children: [
@@ -549,14 +594,16 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                     onPressed: () => Navigator.of(ctx).pop(),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.textDark,
-                      side:
-                          const BorderSide(color: AppColors.surfaceAccent),
+                      side: const BorderSide(color: AppColors.surfaceAccent),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    child: const Text('Try Again',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    child: const Text(
+                      'Try Again',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -573,11 +620,14 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primaryBlue,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    child: const Text('Fill Manually',
-                        style: TextStyle(fontWeight: FontWeight.w800)),
+                    child: const Text(
+                      'Fill Manually',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
                   ),
                 ),
               ],
@@ -596,23 +646,25 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
     final isAiTab = _tabIndex == 2;
     final hasCapture = isAiTab && capturedPath != null;
 
+    final String title = _tabIndex == 0
+        ? 'Bill Scan'
+        : (_tabIndex == 1 ? 'UPI Pay' : 'AI Scan');
+
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: Colors.white,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
         leading: const Center(
           child: AppBackButton(
-            backgroundColor: Colors.white,
-            iconColor: AppColors.textDark,
+            backgroundColor: Colors.white24,
+            iconColor: Colors.white,
           ),
         ),
         title: Text(
-          _tabIndex == 0
-              ? 'Bill Scan'
-              : (_tabIndex == 1 ? 'AI Scan' : 'UPI Pay'),
+          title,
           style: const TextStyle(
             fontWeight: FontWeight.w900,
             fontSize: 20,
@@ -620,62 +672,78 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
             shadows: [Shadow(color: Colors.black87, blurRadius: 10)],
           ),
         ),
-        flexibleSpace: ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Container(
-              color: Colors.black.withValues(alpha: 0.35),
-            ),
-          ),
-        ),
       ),
-      /*
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: Colors.white,
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Colors.black45,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.arrow_back_rounded, size: 20),
-          ),
-        ),
-        title: Text(
-          isAiTab ? 'AI Scan' : 'Bill Scan',
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-            shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
-          ),
-        ),
-      ),
-      */
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // ── Camera views ─────────────────────────────────────────────────
+          // ── Single continuous camera view (Never goes black) ──────────────
           if (!hasCapture)
-            IndexedStack(
-              index: _tabIndex == 2 ? 1 : 0,
-              children: [
-                MobileScanner(
-                  controller: _billController,
-                  onDetect: (capture) {
-                    if (_tabIndex == 0) {
-                      _onBillDetect(capture);
-                    } else if (_tabIndex == 1) {
-                      _onUpiDetect(capture);
-                    }
-                  },
-                ),
-                RepaintBoundary(
-                  key: _previewKey,
-                  child: MobileScanner(controller: _aiController),
-                ),
-              ],
+            RepaintBoundary(
+              key: _previewKey,
+              child: MobileScanner(
+                controller: _controller,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.videocam_off_rounded, color: Colors.white70, size: 40),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Camera Access Needed',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Please grant camera permission to scan receipts, UPI QR codes, and products.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.4),
+                          ),
+                          const SizedBox(height: 20),
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              final status = await Permission.camera.request();
+                              if (status.isGranted) {
+                                _controller.start();
+                                setState(() {});
+                              } else if (status.isPermanentlyDenied) {
+                                await openAppSettings();
+                              }
+                            },
+                            icon: const Icon(Icons.lock_open_rounded, size: 16),
+                            label: const Text('Allow Camera'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryBlue,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                onDetect: (capture) {
+                  if (_tabIndex == 0) {
+                    _onBillDetect(capture);
+                  } else if (_tabIndex == 1) {
+                    _onUpiDetect(capture);
+                  }
+                  // Tab 2 (AI Scan) intentionally does not auto-detect barcodes
+                },
+              ),
             ),
 
           if (_showShutterFlash)
@@ -692,21 +760,72 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
               ),
             ),
 
-          // ── Bill scan overlay: target box ─────────────────────────────
-          if (_tabIndex == 0)
+          // Top gradient scrim for transparent header readability
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 120,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.black87, Colors.transparent],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+            ),
+          ),
+
+          // ── Bill scan overlay: rectangular receipt target box ─────────
+          if (_tabIndex == 0 && !hasCapture)
             Center(
               child: Container(
-                width: 250,
-                height: 250,
+                width: 260,
+                height: 320,
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white, width: 2),
-                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.85), width: 2),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.receipt_long_rounded, color: Colors.white70, size: 14),
+                          SizedBox(width: 5),
+                          Text(
+                            'Receipt & Barcode',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
 
-          // ── UPI scan overlay: target box ──────────────────────────────
-          if (_tabIndex == 1)
+          // ── UPI scan overlay: QR target box (cyan border, NO blue tint) ──
+          if (_tabIndex == 1 && !hasCapture)
             Center(
               child: Container(
                 width: 260,
@@ -714,6 +833,12 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                 decoration: BoxDecoration(
                   border: Border.all(color: const Color(0xFF00B0FF), width: 2.5),
                   borderRadius: BorderRadius.circular(20),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black38,
+                      blurRadius: 12,
+                    ),
+                  ],
                 ),
                 child: Align(
                   alignment: Alignment.bottomCenter,
@@ -732,6 +857,56 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                           SizedBox(width: 5),
                           Text(
                             'UPI QR',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // ── AI scan overlay: lens focus frame with purple accent ───────
+          if (_tabIndex == 2 && !hasCapture)
+            Center(
+              child: Container(
+                width: 270,
+                height: 270,
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.9),
+                    width: 2.5,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black38,
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.auto_awesome_rounded, color: Color(0xFFC084FC), size: 14),
+                          SizedBox(width: 5),
+                          Text(
+                            'AI Product Lens',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 11,
@@ -784,8 +959,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
             child: SafeArea(
               top: false,
               child: Padding(
-                padding:
-                    const EdgeInsets.only(bottom: 16, left: 20, right: 20),
+                padding: const EdgeInsets.only(bottom: 16, left: 20, right: 20),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -795,25 +969,22 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                         child: _tabIndex == 0
                             ? const _HintPill(
                                 key: ValueKey('bill_hint'),
-                                text:
-                                    'Point camera at barcode or QR on receipt',
+                                text: 'Point camera at barcode or QR on bill',
                               )
                             : (_tabIndex == 1
                                 ? const _HintPill(
                                     key: ValueKey('upi_hint'),
-                                    text:
-                                        'Point camera at any UPI QR code to pay',
+                                    text: 'Point camera at any UPI QR code to pay',
                                   )
                                 : const _HintPill(
                                     key: ValueKey('ai_hint'),
-                                    text:
-                                        'Point at a product & capture for AI detection',
+                                    text: 'Point at a product & capture for AI detection',
                                   )),
                       ),
                       const SizedBox(height: 16),
                     ],
 
-                    // ── Controls row (bill, UPI, or AI) ─────────────────────
+                    // ── Controls row ──────────────────────────────────────
                     if (_tabIndex == 0) _buildBillControls(),
                     if (_tabIndex == 1) _buildUpiControls(),
                     if (_tabIndex == 2 && !hasCapture) _buildAiControls(),
@@ -823,7 +994,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
 
                     const SizedBox(height: 20),
 
-                    // ── Tab switcher ─────────────────────────────────────
+                    // ── Smart Floating Navigation Tab switcher ────────────
                     _TabSwitcher(
                       currentIndex: _tabIndex,
                       onSwitch: _switchTab,
@@ -845,14 +1016,14 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         ValueListenableBuilder<MobileScannerState>(
-          valueListenable: _billController,
+          valueListenable: _controller,
           builder: (_, state, __) {
             final on = state.torchState == TorchState.on;
             return _ControlButton(
               icon: on ? Icons.flash_on_rounded : Icons.flash_off_rounded,
               label: on ? 'Flash On' : 'Flash Off',
               highlighted: on,
-              onTap: _billController.toggleTorch,
+              onTap: _controller.toggleTorch,
             );
           },
         ),
@@ -860,26 +1031,28 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
         _ControlButton(
           icon: Icons.photo_library_outlined,
           label: 'Gallery',
-          loading: _isPicking,
+          loading: _isPickingBill,
           onTap: _billPickGallery,
         ),
       ],
     );
   }
 
+  // ── UPI controls: Flash + Gallery ────────────────────────────────────────
+
   Widget _buildUpiControls() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         ValueListenableBuilder<MobileScannerState>(
-          valueListenable: _billController,
+          valueListenable: _controller,
           builder: (_, state, __) {
             final on = state.torchState == TorchState.on;
             return _ControlButton(
               icon: on ? Icons.flash_on_rounded : Icons.flash_off_rounded,
               label: on ? 'Flash On' : 'Flash Off',
               highlighted: on,
-              onTap: _billController.toggleTorch,
+              onTap: _controller.toggleTorch,
             );
           },
         ),
@@ -894,7 +1067,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
     );
   }
 
-  // ── AI controls: Flash + Shutter (animated) + Gallery ────────────────────
+  // ── AI controls: Flash + Shutter + Gallery ────────────────────────────────
 
   Widget _buildAiControls() {
     return Row(
@@ -903,19 +1076,19 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
       children: [
         // Flash
         ValueListenableBuilder<MobileScannerState>(
-          valueListenable: _aiController,
+          valueListenable: _controller,
           builder: (_, state, __) {
             final on = state.torchState == TorchState.on;
             return _ControlButton(
               icon: on ? Icons.flash_on_rounded : Icons.flash_off_rounded,
               label: on ? 'Flash On' : 'Flash Off',
               highlighted: on,
-              onTap: _aiController.toggleTorch,
+              onTap: _controller.toggleTorch,
             );
           },
         ),
 
-        // Animated shutter button (scales+fades in when AI tab becomes active)
+        // Animated shutter button
         ScaleTransition(
           scale: _shutterScale,
           child: FadeTransition(
@@ -972,7 +1145,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
         _ControlButton(
           icon: Icons.photo_library_outlined,
           label: 'Gallery',
-          loading: _isPicking,
+          loading: _isPickingAi,
           onTap: _aiPickGallery,
         ),
       ],
@@ -987,8 +1160,7 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
       children: [
         // AI badge
         Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             color: const Color(0xFF7B2FF7),
             borderRadius: BorderRadius.circular(20),
@@ -996,15 +1168,15 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.auto_awesome_rounded,
-                  size: 14, color: Colors.white),
+              Icon(Icons.auto_awesome_rounded, size: 14, color: Colors.white),
               SizedBox(width: 6),
               Text(
                 'Gemini Vision will identify this',
                 style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700),
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),
@@ -1027,14 +1199,16 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.refresh_rounded,
-                          color: Colors.white, size: 18),
+                      Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
                       SizedBox(width: 6),
-                      Text('Retake',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14)),
+                      Text(
+                        'Retake',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1063,18 +1237,24 @@ class _UnifiedScannerScreenState extends ConsumerState<UnifiedScannerScreen>
                               width: 16,
                               height: 16,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white)))
-                          : const Icon(Icons.auto_awesome_rounded,
-                              color: Colors.white, size: 18),
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(
+                              Icons.auto_awesome_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
                       const SizedBox(width: 6),
                       Text(
                         _isProcessing ? 'Identifying…' : 'Identify',
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 14),
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                        ),
                       ),
                     ],
                   ),
@@ -1114,11 +1294,13 @@ class _HintPill extends StatelessWidget {
   }
 }
 
-// ── Tab switcher ──────────────────────────────────────────────────────────────
+// ── Smart Floating Navigation Tab Switcher ────────────────────────────────────
 
 class _TabSwitcher extends StatelessWidget {
-  const _TabSwitcher(
-      {required this.currentIndex, required this.onSwitch});
+  const _TabSwitcher({
+    required this.currentIndex,
+    required this.onSwitch,
+  });
 
   final int currentIndex;
   final ValueChanged<int> onSwitch;
@@ -1126,10 +1308,10 @@ class _TabSwitcher extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(40),
+        color: Colors.black.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(36),
         border: Border.all(color: Colors.white24),
       ),
       child: Row(
@@ -1137,25 +1319,26 @@ class _TabSwitcher extends StatelessWidget {
         children: [
           _TabItem(
             icon: Icons.receipt_long_rounded,
-            label: 'Bill Scan',
+            label: 'Bill',
             selected: currentIndex == 0,
             onTap: () => onSwitch(0),
-          ),
-          const SizedBox(width: 4),
-          _TabItem(
-            icon: Icons.auto_awesome_rounded,
-            label: 'AI Scan',
-            selected: currentIndex == 1,
-            onTap: () => onSwitch(1),
-            accentColor: const Color(0xFF7B2FF7),
+            accentColor: AppColors.primaryBlue,
           ),
           const SizedBox(width: 4),
           _TabItem(
             icon: Icons.qr_code_scanner_rounded,
-            label: 'UPI Pay',
+            label: 'UPI',
+            selected: currentIndex == 1,
+            onTap: () => onSwitch(1),
+            accentColor: const Color(0xFF00B0FF),
+          ),
+          const SizedBox(width: 4),
+          _TabItem(
+            icon: Icons.auto_awesome_rounded,
+            label: 'AI',
             selected: currentIndex == 2,
             onTap: () => onSwitch(2),
-            accentColor: const Color(0xFF00B0FF),
+            accentColor: const Color(0xFF8B5CF6),
           ),
         ],
       ),
@@ -1187,28 +1370,42 @@ class _TabItem extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOutCubic,
+        padding: EdgeInsets.symmetric(
+          horizontal: selected ? 14 : 10,
+          vertical: 8,
+        ),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(36),
+          borderRadius: BorderRadius.circular(32),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: fg, size: 16),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: fg,
-                fontWeight:
-                    selected ? FontWeight.w800 : FontWeight.w600,
-                fontSize: 13,
+            Icon(icon, color: fg, size: 19),
+            AnimatedCrossFade(
+              firstChild: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: fg,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
               ),
+              secondChild: const SizedBox.shrink(),
+              crossFadeState: selected
+                  ? CrossFadeState.showFirst
+                  : CrossFadeState.showSecond,
+              duration: const Duration(milliseconds: 200),
             ),
           ],
         ),
@@ -1255,14 +1452,14 @@ class _ControlButton extends StatelessWidget {
                     padding: EdgeInsets.all(14),
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(Colors.white),
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   )
-                : Icon(icon,
-                    color:
-                        highlighted ? Colors.black87 : Colors.white,
-                    size: 24),
+                : Icon(
+                    icon,
+                    color: highlighted ? Colors.black87 : Colors.white,
+                    size: 24,
+                  ),
           ),
           const SizedBox(height: 5),
           Text(

@@ -13,7 +13,6 @@ import 'package:expensio/features/accounts/presentation/provider/participant_pro
 import 'package:expensio/features/accounts/presentation/provider/settlement_providers.dart';
 import 'package:expensio/features/accounts/data/models/participant_model.dart';
 import 'package:expensio/features/accounts/data/models/settlement_model.dart';
-import 'package:expensio/features/expense/presentation/widgets/ui_feedback.dart';
 
 class SplitBillToolView extends ConsumerStatefulWidget {
   const SplitBillToolView({super.key});

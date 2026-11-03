@@ -1,3 +1,4 @@
+import '../../domain/common_services_catalog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -52,6 +53,8 @@ Future<SubscriptionFormResult?> showSubscriptionEditorSheet(
   RecurrenceParsed? initialRecurrence,
   String? initialName,
   double? initialAmount,
+  String? initialIconKey,
+  String? initialCategory,
 }) {
   return showModalBottomSheet<SubscriptionFormResult>(
     context: context,
@@ -62,6 +65,8 @@ Future<SubscriptionFormResult?> showSubscriptionEditorSheet(
       initialRecurrence: initialRecurrence,
       initialName: initialName,
       initialAmount: initialAmount,
+      initialIconKey: initialIconKey,
+      initialCategory: initialCategory,
     ),
   );
 }
@@ -72,12 +77,16 @@ class _SubscriptionEditorSheet extends StatefulWidget {
     this.initialRecurrence,
     this.initialName,
     this.initialAmount,
+    this.initialIconKey,
+    this.initialCategory,
   });
 
   final RecurringSubscriptionModel? subscription;
   final RecurrenceParsed? initialRecurrence;
   final String? initialName;
   final double? initialAmount;
+  final String? initialIconKey;
+  final String? initialCategory;
 
   @override
   State<_SubscriptionEditorSheet> createState() =>
@@ -95,6 +104,7 @@ class _SubscriptionEditorSheetState extends State<_SubscriptionEditorSheet> {
   late RecurrenceUnit _intervalUnit;
   late int _notifyDaysBefore;
   final _cancelNoteController = TextEditingController();
+  late String _category;
 
   // ── Smart recurrence helpers ─────────────────────────────────────────────
 
@@ -182,10 +192,14 @@ class _SubscriptionEditorSheetState extends State<_SubscriptionEditorSheet> {
     );
 
     _nextBillDate = widget.subscription?.nextBillDate ?? DateTime.now();
-    _iconKey =
-        widget.subscription?.iconKey ?? subscriptionIconOptions.first.key;
+    _iconKey = widget.initialIconKey ??
+        widget.subscription?.iconKey ??
+        subscriptionIconOptions.first.key;
     _isActive = widget.subscription?.isActive ?? true;
     _notifyDaysBefore = widget.subscription?.notifyDaysBefore ?? 7;
+    _category = widget.initialCategory ??
+        widget.subscription?.category ??
+        'Entertainment';
 
     // Recurrence — prefer initialRecurrence (from ! shortcode), then subscription
     final raw = widget.initialRecurrence ??
@@ -213,13 +227,73 @@ class _SubscriptionEditorSheetState extends State<_SubscriptionEditorSheet> {
     super.dispose();
   }
 
-  String get _recurrenceLabel {
-    final rec = RecurrenceParsed(count: _intervalCount, unit: _intervalUnit);
-    return rec.label;
-  }
 
   String get _encodedPeriod {
     return RecurrenceParsed(count: _intervalCount, unit: _intervalUnit).encoded;
+  }
+
+
+  void _selectPreset(CommonServicePreset preset) {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _nameController.text = preset.name;
+      _amountController.text = preset.defaultAmount.toStringAsFixed(0);
+      _iconKey = preset.iconKey;
+      _category = preset.category;
+      _intervalCount = preset.defaultCount;
+      _intervalUnit = preset.defaultUnit;
+    });
+  }
+
+  Widget _buildPresetChip(CommonServicePreset preset) {
+    final isSelected = _nameController.text == preset.name;
+    return GestureDetector(
+      onTap: () => _selectPreset(preset),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primaryBlue : AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? AppColors.primaryBlue : const Color(0xFFE2EAF4),
+            width: 1.2,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(preset.iconKey, style: const TextStyle(fontSize: 15)),
+            const SizedBox(width: 5),
+            Text(
+              preset.name,
+              style: TextStyle(
+                color: isSelected ? Colors.white : AppColors.textDark,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: isSelected ? Colors.white24 : const Color(0xFFE2E8F0),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '₹${preset.defaultAmount.toInt()}',
+                style: TextStyle(
+                  color: isSelected ? Colors.white : AppColors.textSecondary,
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Preview text shown in the info card.
@@ -282,12 +356,126 @@ class _SubscriptionEditorSheetState extends State<_SubscriptionEditorSheet> {
               ),
               const SizedBox(height: 20),
 
+              // ── Quick Presets (50+ Services in 2 Rows) ────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const _SectionLabel(label: 'Quick Pick Popular Service (50+)'),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'Tap to autofill',
+                      style: TextStyle(
+                        color: AppColors.primaryBlue,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Row 1: Entertainment, AI, Books, Dev, Social
+              SizedBox(
+                height: 38,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: CommonServicesCatalog.digitalAndStreaming.length,
+                  itemBuilder: (context, i) => _buildPresetChip(
+                    CommonServicesCatalog.digitalAndStreaming[i],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Row 2: Bills, Rent, Utilities, Food, Fitness, Recharges
+              SizedBox(
+                height: 38,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: CommonServicesCatalog.billsAndUtilities.length,
+                  itemBuilder: (context, i) => _buildPresetChip(
+                    CommonServicesCatalog.billsAndUtilities[i],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               // Name
               TextField(
                 controller: _nameController,
                 textCapitalization: TextCapitalization.words,
                 decoration: _inputDecoration('Name (e.g. Netflix, Rent)'),
               ),
+              const SizedBox(height: 8),
+              // Shorthand helper chips
+              Row(
+                children: [
+                  const Text(
+                    'Shorthand:',
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: [
+                          '!month',
+                          '!quarter',
+                          '!year',
+                          '!week',
+                          '!2weeks',
+                          '!30days',
+                        ].map((sh) {
+                          return GestureDetector(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              final parsed = parseRecurrenceToken(sh.startsWith('!') ? sh.substring(1) : sh);
+                              if (parsed != null) {
+                                final (cnt, unt) = _normalize(parsed.count, parsed.unit);
+                                setState(() {
+                                  _intervalCount = cnt;
+                                  _intervalUnit = unt;
+                                });
+                              }
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: Text(
+                                sh,
+                                style: const TextStyle(
+                                  color: AppColors.primaryBlue,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
               const SizedBox(height: 12),
 
               // Amount
@@ -681,7 +869,7 @@ class _SubscriptionEditorSheetState extends State<_SubscriptionEditorSheet> {
         note: _noteController.text.trim(),
         isActive: _isActive,
         billingPeriod: _encodedPeriod,
-        category: '',
+        category: _category.isNotEmpty ? _category : 'Other',
         notifyDaysBefore: _notifyDaysBefore,
         lastPaymentDate: widget.subscription?.lastPaymentDate,
         priceHistory: widget.subscription?.priceHistory,

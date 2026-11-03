@@ -6,14 +6,17 @@ import 'package:expensio/shared/widgets/app_page_header.dart';
 import '../../widgets/split_bill_tool_view.dart';
 
 class SplitBillScreen extends ConsumerWidget {
-  const SplitBillScreen({super.key});
+  const SplitBillScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      appBar: const GradientAppBar(
+      appBar: GradientAppBar(
         title: 'Split Bill',
+        showBackButton: showBackButton,
       ),
       body: const SplitBillToolView(),
     );

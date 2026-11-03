@@ -5,6 +5,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/universal_top_bar.dart';
 import 'settings/settings_widgets.dart';
 import 'settings/general_settings_screen.dart';
+import 'settings/navigation_gestures_settings_screen.dart';
 import 'settings/notification_settings_screen.dart';
 import 'settings/security_settings_screen.dart';
 import 'settings/data_settings_screen.dart';
@@ -70,6 +71,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         subtitle: 'Appearance, currency, locale preferences',
         onTap: (ctx) => Navigator.of(ctx).push<void>(
           MaterialPageRoute<void>(builder: (_) => const GeneralSettingsScreen()),
+        ),
+      ),
+      _SettingItem(
+        icon: Icons.view_carousel_rounded,
+        title: 'Navigation & Gestures',
+        subtitle: 'Customize navbar tabs (3-8), + button tap gestures',
+        onTap: (ctx) => Navigator.of(ctx).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => const NavigationGesturesSettingsScreen(),
+          ),
         ),
       ),
       _SettingItem(

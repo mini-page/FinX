@@ -17,6 +17,10 @@
     <!-- Location tracking for transaction mapping -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Camera for barcode, receipt & UPI QR scanner -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
         android:label="Expensio"
@@ -125,3 +129,4 @@
         </intent>
     </queries>
 </manifest>
+

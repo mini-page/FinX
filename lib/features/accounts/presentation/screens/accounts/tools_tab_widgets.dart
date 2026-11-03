@@ -13,6 +13,7 @@ import 'package:expensio/features/accounts/data/models/account_model.dart';
 import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
 import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
 import 'package:expensio/features/recurring/presentation/widgets/recurring_tool_view.dart';
+import 'package:expensio/features/expense/presentation/widgets/transaction_card.dart';
 import 'package:expensio/features/accounts/presentation/widgets/split_bill_tool_view.dart';
 
 const _maxDisplayedFutureTransactions = 6;
@@ -223,7 +224,6 @@ class GoalsToolView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final goalsJson = ref.watch(savingsGoalsJsonProvider);
     final goals = _parseGoals(goalsJson);
-    final currency = ref.watch(currencyFormatProvider);
     final accounts = ref.watch(accountListProvider).value ?? [];
     final totalBalance = accounts.fold<double>(0, (s, a) => s + a.balance);
 
@@ -1200,51 +1200,13 @@ class GoalsToolView extends ConsumerWidget {
 class FutureTransactionsToolView extends ConsumerWidget {
   const FutureTransactionsToolView({super.key});
 
-  IconData _getCategoryIcon(String category) {
-    final catLower = category.toLowerCase();
-    if (catLower.contains('food') || catLower.contains('restaurant') || catLower.contains('cafe')) {
-      return Icons.restaurant_rounded;
-    }
-    if (catLower.contains('travel') || catLower.contains('car') || catLower.contains('uber')) {
-      return Icons.directions_car_rounded;
-    }
-    if (catLower.contains('shopping') || catLower.contains('shop')) {
-      return Icons.shopping_bag_rounded;
-    }
-    if (catLower.contains('bill') || catLower.contains('rent')) {
-      return Icons.receipt_long_rounded;
-    }
-    if (catLower.contains('salary') || catLower.contains('income')) {
-      return Icons.account_balance_rounded;
-    }
-    return Icons.payments_rounded;
-  }
-
-  Color _getCategoryColor(String category) {
-    final catLower = category.toLowerCase();
-    if (catLower.contains('food') || catLower.contains('restaurant') || catLower.contains('cafe')) {
-      return const Color(0xFFF97316); // Orange
-    }
-    if (catLower.contains('travel') || catLower.contains('car') || catLower.contains('uber')) {
-      return const Color(0xFF06B6D4); // Cyan
-    }
-    if (catLower.contains('shopping') || catLower.contains('shop')) {
-      return const Color(0xFFEC4899); // Pink
-    }
-    if (catLower.contains('bill') || catLower.contains('rent')) {
-      return const Color(0xFF3B82F6); // Blue
-    }
-    if (catLower.contains('salary') || catLower.contains('income')) {
-      return const Color(0xFF10B981); // Green
-    }
-    return const Color(0xFF64748B); // Slate
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final expenses =
         ref.watch(expenseListProvider).value ?? const <ExpenseModel>[];
-    final currency = ref.watch(currencyFormatProvider);
+    final accounts = ref.watch(accountListProvider).value ?? const [];
+    final accountsMap = {for (final a in accounts) a.id: a};
+    final privacyModeEnabled = ref.watch(privacyModeEnabledProvider);
     final today = DateUtils.dateOnly(DateTime.now());
 
     final futureTransactions = expenses
@@ -1338,96 +1300,31 @@ class FutureTransactionsToolView extends ConsumerWidget {
           ...futureTransactions
               .take(_maxDisplayedFutureTransactions)
               .map((expense) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(AppRadii.lg),
-                child: InkWell(
-                  onTap: () => AppRoutes.pushEditExpense(
-                    context,
-                    expenseId: expense.id,
-                    initialAmount: expense.amount,
-                    initialCategory: expense.category,
-                    initialDate: expense.date.toLocal(),
-                    initialNote: expense.note,
-                    initialAccountId: expense.accountId,
-                    initialToAccountId: expense.toAccountId,
-                    initialType: expense.type,
-                    initialSubcategory: expense.subcategory,
-                    initialLatitude: expense.latitude,
-                    initialLongitude: expense.longitude,
-                  ),
-                  borderRadius: BorderRadius.circular(AppRadii.lg),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(AppRadii.lg),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: Row(
-                      children: <Widget>[
-                        // Circle brand-colored icon
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: _getCategoryColor(expense.category),
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Icon(
-                            _getCategoryIcon(expense.category),
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                expense.note.isEmpty
-                                    ? expense.category
-                                    : expense.note,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: AppColors.textDark,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                DateFormat('EEE, d MMM').format(expense.date.toLocal()),
-                                style: const TextStyle(
-                                  color: AppColors.textMuted,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          expense.isIncome
-                              ? '+${currency.format(expense.amount)}'
-                              : '-${currency.format(expense.amount)}',
-                          style: TextStyle(
-                            color: expense.isIncome
-                                ? const Color(0xFF059669)
-                                : const Color(0xFFDC2626),
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+            return TransactionCard(
+              expense: expense,
+              accountLabel: expense.accountId != null
+                  ? accountsMap[expense.accountId]?.name
+                  : null,
+              toAccountLabel: expense.toAccountId != null
+                  ? accountsMap[expense.toAccountId]?.name
+                  : null,
+              maskAmounts: privacyModeEnabled,
+              showDateInCollapsed: true,
+              onEdit: () => AppRoutes.pushEditExpense(
+                context,
+                expenseId: expense.id,
+                initialAmount: expense.amount,
+                initialCategory: expense.category,
+                initialDate: expense.date.toLocal(),
+                initialNote: expense.note,
+                initialAccountId: expense.accountId,
+                initialToAccountId: expense.toAccountId,
+                initialType: expense.type,
+                initialSubcategory: expense.subcategory,
+                initialLatitude: expense.latitude,
+                initialLongitude: expense.longitude,
               ),
+              onDelete: () => ref.read(expenseControllerProvider).deleteExpense(expense.id),
             );
           }),
 
