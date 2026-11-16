@@ -275,7 +275,7 @@ class UniversalTopBar extends StatelessWidget {
   final EdgeInsetsGeometry padding;
 
   bool _shouldShowSearch(BuildContext context) {
-    if (alwaysShowSearch != null) return alwaysShowSearch!;
+    if (alwaysShowSearch == true) return false;
     if (showSearchToggle != null) return showSearchToggle!;
     if (itemCount != null) return itemCount! > 10;
     return onSearchToggle != null;
@@ -360,7 +360,7 @@ class UniversalTopBar extends StatelessWidget {
                       ),
                       child: Center(
                         child: Icon(
-                          isSearchOpen ? Icons.close_rounded : Icons.search_rounded,
+                          isSearchOpen ? Icons.search_off_rounded : Icons.search_rounded,
                           size: 19,
                           color: isSearchOpen ? AppColors.accentPurple : AppColors.textDark,
                         ),

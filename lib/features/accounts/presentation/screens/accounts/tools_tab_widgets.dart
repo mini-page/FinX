@@ -46,14 +46,16 @@ class ToolsTabView extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class RecurringAndFutureToolView extends StatelessWidget {
-  const RecurringAndFutureToolView({super.key});
+  const RecurringAndFutureToolView({super.key, this.showHeader = true});
+
+  final bool showHeader;
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        RecurringToolView(),
+        RecurringToolView(showHeader: showHeader),
         SizedBox(height: 32),
         FutureTransactionsToolView(),
       ],
@@ -218,44 +220,49 @@ class _GoalProgressBar extends StatelessWidget {
 }
 
 class GoalsToolView extends ConsumerWidget {
-  const GoalsToolView({super.key});
+  const GoalsToolView({super.key, this.showHeader = true});
+
+  final bool showHeader;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final goalsJson = ref.watch(savingsGoalsJsonProvider);
     final goals = _parseGoals(goalsJson);
+    final currency = ref.watch(currencyFormatProvider);
     final accounts = ref.watch(accountListProvider).value ?? [];
     final totalBalance = accounts.fold<double>(0, (s, a) => s + a.balance);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Savings Goals', style: AppTextStyles.sectionHeading),
-                  Text(
-                    'Track your financial milestones',
-                    style: AppTextStyles.sectionSubtitle,
-                  ),
-                ],
+        if (showHeader) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Savings Goals', style: AppTextStyles.sectionHeading),
+                    Text(
+                      'Track your financial milestones',
+                      style: AppTextStyles.sectionSubtitle,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            IconButton.filled(
-              onPressed: () => _addGoal(context, ref, goals, currency),
-              icon: const Icon(Icons.add_rounded),
-              tooltip: 'Add savings goal',
-              style: IconButton.styleFrom(
-                backgroundColor: AppColors.primaryBlue,
+              IconButton.filled(
+                onPressed: () => _addGoal(context, ref, goals, currency),
+                icon: const Icon(Icons.add_rounded),
+                tooltip: 'Add savings goal',
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.primaryBlue,
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
 
         // Net worth hint
         Container(
@@ -276,14 +283,27 @@ class GoalsToolView extends ConsumerWidget {
                 size: 18,
               ),
               const SizedBox(width: 8),
-              Text(
-                'Available balance: ${currency.format(totalBalance)}',
-                style: const TextStyle(
-                  color: AppColors.primaryBlue,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
+              Expanded(
+                child: Text(
+                  'Available balance: ${currency.format(totalBalance)}',
+                  style: const TextStyle(
+                    color: AppColors.primaryBlue,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
                 ),
               ),
+              if (!showHeader)
+                IconButton.filled(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _addGoal(context, ref, goals, currency),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  tooltip: 'Add savings goal',
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.primaryBlue,
+                    padding: const EdgeInsets.all(6),
+                  ),
+                ),
             ],
           ),
         ),
@@ -628,60 +648,139 @@ class GoalsToolView extends ConsumerWidget {
     NumberFormat currency,
   ) async {
     final goal = goals[idx];
-    if (goal.linkedAccountId != null) {
-      final accounts = ref.read(accountListProvider).value ?? [];
-      final linkedAccount = accounts.cast<AccountModel?>().firstWhere((a) => a?.id == goal.linkedAccountId, orElse: () => null);
-      final accountName = linkedAccount?.name ?? 'Account';
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('This goal is linked to "$accountName". Add funds to this account directly to track progress.'),
-          backgroundColor: AppColors.textDark,
-        ),
-      );
-      return;
-    }
-
+    final accounts = ref.read(accountListProvider).value ?? [];
+    String? selectedAccId = (goal.linkedAccountId != null && accounts.any((a) => a.id == goal.linkedAccountId))
+        ? goal.linkedAccountId
+        : (accounts.isNotEmpty ? accounts.first.id : null);
+    bool deductFromAccount = accounts.isNotEmpty;
     final amountController = TextEditingController();
+
     final result = await showDialog<double>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Add to "${goals[idx].name}"'),
-        content: TextField(
-          controller: amountController,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(hintText: 'Amount to add'),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('Add to "${goal.name}"', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  hintText: 'Enter amount to deposit',
+                  prefixText: '${currency.currencySymbol} ',
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFC),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  ),
+                ),
+                autofocus: true,
+              ),
+              const SizedBox(height: 12),
+              if (accounts.isNotEmpty) ...[
+                Row(
+                  children: [
+                    Checkbox(
+                      value: deductFromAccount,
+                      activeColor: AppColors.primaryBlue,
+                      onChanged: (v) => setState(() => deductFromAccount = v ?? true),
+                    ),
+                    const Expanded(
+                      child: Text(
+                        'Deduct from account',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+                if (deductFromAccount)
+                  DropdownButtonFormField<String>(
+                    value: selectedAccId,
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                    ),
+                    items: accounts.map((a) => DropdownMenuItem(
+                      value: a.id,
+                      child: Text('${a.name} (${currency.format(a.balance)})', style: const TextStyle(fontSize: 12)),
+                    )).toList(),
+                    onChanged: (v) => setState(() => selectedAccId = v),
+                  ),
+              ],
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(
-              ctx,
-              double.tryParse(amountController.text),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
             ),
-            child: const Text('Add'),
-          ),
-        ],
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryBlue,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => Navigator.pop(
+                ctx,
+                double.tryParse(amountController.text),
+              ),
+              child: const Text('Deposit'),
+            ),
+          ],
+        ),
       ),
     );
+
     if (result != null && result > 0) {
+      if (deductFromAccount && selectedAccId != null) {
+        await ref.read(expenseControllerProvider).addExpense(
+              amount: result,
+              category: 'Savings',
+              date: DateTime.now(),
+              note: 'Deposit to ${goal.name}',
+              accountId: selectedAccId,
+            );
+      }
       final updated = List<_SavingsGoal>.from(goals);
+      final newCurrent = goal.currentAmount + result;
       updated[idx] = _SavingsGoal(
-        id: goals[idx].id,
-        name: goals[idx].name,
-        targetAmount: goals[idx].targetAmount,
-        currentAmount: goals[idx].currentAmount + result,
-        emoji: goals[idx].emoji,
-        targetDate: goals[idx].targetDate,
-        colorHex: goals[idx].colorHex,
+        id: goal.id,
+        name: goal.name,
+        targetAmount: goal.targetAmount,
+        currentAmount: newCurrent,
+        emoji: goal.emoji,
+        targetDate: goal.targetDate,
+        colorHex: goal.colorHex,
+        linkedAccountId: goal.linkedAccountId,
       );
       await ref
           .read(appPreferencesControllerProvider)
           .setSavingsGoalsJson(_encodeGoals(updated));
+
+      if (context.mounted) {
+        if (newCurrent >= goal.targetAmount) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('🎉 Congratulations! You reached your goal for "${goal.name}"!'),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Added ${currency.format(result)} to "${goal.name}"'),
+              backgroundColor: AppColors.textDark,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
     }
   }
 

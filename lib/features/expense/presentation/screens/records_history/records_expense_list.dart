@@ -18,6 +18,10 @@ class RecordsExpenseList extends StatelessWidget {
     required this.accountLabelFor,
     required this.onEdit,
     required this.onDelete,
+    this.isSelectable = false,
+    this.selectedExpenseIds = const <String>{},
+    this.onToggleSelect,
+    this.onLongPress,
   });
 
   final SplayTreeMap<DateTime, List<ExpenseModel>> groupedExpenses;
@@ -27,6 +31,10 @@ class RecordsExpenseList extends StatelessWidget {
   final String? Function(ExpenseModel, List<AccountModel>) accountLabelFor;
   final void Function(ExpenseModel) onEdit;
   final void Function(ExpenseModel) onDelete;
+  final bool isSelectable;
+  final Set<String> selectedExpenseIds;
+  final void Function(ExpenseModel)? onToggleSelect;
+  final void Function(ExpenseModel)? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +63,10 @@ class RecordsExpenseList extends StatelessWidget {
                   maskAmounts: privacyModeEnabled,
                   onEdit: () => onEdit(expense),
                   onDelete: () => onDelete(expense),
+                  isSelectable: isSelectable,
+                  isSelected: selectedExpenseIds.contains(expense.id),
+                  onSelect: () => onToggleSelect?.call(expense),
+                  onLongPress: () => onLongPress?.call(expense),
                 );
               }),
             ],

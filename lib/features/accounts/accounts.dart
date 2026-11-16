@@ -15,8 +15,10 @@ export 'presentation/widgets/account_icons.dart';
 // Presentation – providers
 export 'presentation/provider/account_providers.dart';
 export 'presentation/provider/participant_providers.dart';
+export 'presentation/provider/settlement_providers.dart';
 
 // Data models
 export 'data/models/account_model.dart';
 export 'data/models/participant_model.dart';
+export 'data/models/settlement_model.dart';
 

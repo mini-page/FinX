@@ -318,7 +318,7 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
                   ),
                 ),
               ),
-              if (isEditing && !widget.isBuiltIn) ...<Widget>[
+              if (isEditing) ...<Widget>[
                 const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,

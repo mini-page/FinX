@@ -9,9 +9,9 @@ import '../provider/gamification_providers.dart';
 import '../../data/models/achievement_model.dart';
 
 class GamificationScreen extends ConsumerWidget {
-  const GamificationScreen({super.key, this.showBackButton = true});
+  const GamificationScreen({super.key, this.showBackButton});
 
-  final bool showBackButton;
+  final bool? showBackButton;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

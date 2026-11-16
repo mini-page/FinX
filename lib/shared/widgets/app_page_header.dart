@@ -133,14 +133,14 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
   const GradientAppBar({
     super.key,
     required this.title,
-    this.showBackButton = true,
+    this.showBackButton,
     this.actions,
     this.bottom,
     this.centerTitle = false,
   });
 
   final dynamic title; // Can be String or Widget
-  final bool showBackButton;
+  final bool? showBackButton;
   final List<Widget>? actions;
   final PreferredSizeWidget? bottom;
   final bool centerTitle;
@@ -152,11 +152,14 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canPop = showBackButton ?? (ModalRoute.of(context)?.canPop ?? false);
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
+      automaticallyImplyLeading: false,
       centerTitle: centerTitle,
+      leadingWidth: canPop ? 56 : 0,
       flexibleSpace: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -169,7 +172,7 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
         ),
       ),
-      leading: showBackButton
+      leading: canPop
           ? const Center(child: AppBackButton())
           : null,
       title: title is Widget

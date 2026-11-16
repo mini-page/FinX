@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../../core/theme/app_colors.dart';
 
 import '../../../../../core/theme/app_tokens.dart';
+import '../../../../../shared/widgets/responsive_settings_tile.dart';
 import '../../../../../shared/widgets/app_filter_sheet.dart';
 
 /// Section header label used to group settings rows.
@@ -129,28 +130,21 @@ class SettingsActionTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.trailing,
-    required this.onTap,
+    this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final Widget? trailing;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: SettingsTileIcon(icon: icon),
-      title: Text(
-        title,
-        style: const TextStyle(
-            color: AppColors.textDark, fontWeight: FontWeight.w700),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-      ),
+    return ResponsiveSettingsTile(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
       trailing: trailing ??
           const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
       onTap: onTap,

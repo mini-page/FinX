@@ -6,9 +6,9 @@ import 'package:expensio/shared/widgets/app_page_header.dart';
 import '../accounts/tools_tab_widgets.dart';
 
 class SavingsGoalsScreen extends ConsumerWidget {
-  const SavingsGoalsScreen({super.key, this.showBackButton = true});
+  const SavingsGoalsScreen({super.key, this.showBackButton});
 
-  final bool showBackButton;
+  final bool? showBackButton;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -20,7 +20,7 @@ class SavingsGoalsScreen extends ConsumerWidget {
       ),
       body: const SingleChildScrollView(
         padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        child: GoalsToolView(),
+        child: GoalsToolView(showHeader: false),
       ),
     );
   }

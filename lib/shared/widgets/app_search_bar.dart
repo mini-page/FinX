@@ -142,10 +142,11 @@ class _AppSearchBarState extends State<AppSearchBar> {
                   children: [
                     if (_hasText)
                       IconButton(
+                        tooltip: 'Clear search',
                         icon: const Icon(
-                          Icons.close_rounded,
-                          size: 18,
-                          color: AppColors.textMuted,
+                          Icons.search_off_rounded,
+                          size: 20,
+                          color: AppColors.primaryBlue,
                         ),
                         onPressed: () {
                           _controller.clear();

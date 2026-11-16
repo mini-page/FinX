@@ -6,9 +6,9 @@ import 'package:expensio/shared/widgets/app_page_header.dart';
 import '../../widgets/split_bill_tool_view.dart';
 
 class SplitBillScreen extends ConsumerWidget {
-  const SplitBillScreen({super.key, this.showBackButton = true});
+  const SplitBillScreen({super.key, this.showBackButton});
 
-  final bool showBackButton;
+  final bool? showBackButton;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -18,7 +18,12 @@ class SplitBillScreen extends ConsumerWidget {
         title: 'Split Bill',
         showBackButton: showBackButton,
       ),
-      body: const SplitBillToolView(),
+      body: const SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 120),
+          child: SplitBillToolView(),
+        ),
+      ),
     );
   }
 }

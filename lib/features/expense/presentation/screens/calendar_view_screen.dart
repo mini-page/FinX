@@ -13,9 +13,16 @@ import 'package:expensio/features/accounts/presentation/provider/account_provide
 import 'package:expensio/features/expense/presentation/widgets/transaction_card.dart';
 
 class CalendarViewScreen extends ConsumerStatefulWidget {
-  const CalendarViewScreen({super.key, this.initialDate});
+  const CalendarViewScreen({
+    super.key,
+    this.initialDate,
+    this.showHeader = true,
+    this.initialView = 'Calendar',
+  });
 
   final DateTime? initialDate;
+  final bool showHeader;
+  final String initialView;
 
   @override
   ConsumerState<CalendarViewScreen> createState() => _CalendarViewScreenState();
@@ -24,16 +31,25 @@ class CalendarViewScreen extends ConsumerStatefulWidget {
 class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
   DateTime _currentMonth = DateTime.now();
   DateTime _selectedDate = DateTime.now();
-  String _selectedView = 'Calendar'; // 'Calendar' or 'Timeline'
+  late String _selectedView; // 'Calendar' or 'Timeline'
   String _calendarViewType = 'Week'; // 'Week', '2 weeks', 'Month'
   int _timelineMonthsCount = 1; // default to showing only current month, click load more to increment
 
   @override
   void initState() {
     super.initState();
+    _selectedView = widget.initialView;
     final initial = widget.initialDate ?? DateTime.now();
     _selectedDate = DateUtils.dateOnly(initial);
     _currentMonth = DateTime(initial.year, initial.month, 1);
+  }
+
+  @override
+  void didUpdateWidget(CalendarViewScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialView != oldWidget.initialView) {
+      _selectedView = widget.initialView;
+    }
   }
 
   DateTime _getStartOfWeek(DateTime date) {
@@ -227,132 +243,143 @@ class _CalendarViewScreenState extends ConsumerState<CalendarViewScreen> {
 
 
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: GradientAppBar(
-        title: _selectedView == 'Calendar' ? 'Calendar View' : 'Timeline View',
-      ),
-      body: Column(
-        children: [
-          // Top Swapper Row: Pill switch and Cycle View toggle
+    final content = Column(
+      children: [
+        // Top Swapper Row: Pill switch and Cycle View toggle
+        if (widget.showHeader || _selectedView == 'Calendar')
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: Row(
               children: [
-                _CalendarPillSwitch(
-                  selectedView: _selectedView,
-                  onChanged: (view) {
-                    HapticFeedback.selectionClick();
-                    setState(() {
-                      _selectedView = view;
-                    });
-                  },
-                ),
-                const Spacer(),
+                if (widget.showHeader) ...[
+                  _CalendarPillSwitch(
+                    selectedView: _selectedView,
+                    onChanged: (view) {
+                      HapticFeedback.selectionClick();
+                      setState(() {
+                        _selectedView = view;
+                      });
+                    },
+                  ),
+                  const Spacer(),
+                ] else ...[
+                  const Spacer(),
+                ],
                 // Cycle View Mode Pill Switcher (Toggles by tapping directly)
                 if (_selectedView == 'Calendar')
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      if (_calendarViewType == 'Month') {
+                        _calendarViewType = 'Week';
+                      } else if (_calendarViewType == 'Week') {
+                        _calendarViewType = '2 weeks';
+                      } else {
+                        _calendarViewType = 'Month';
+                      }
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF), // light blue
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.2), width: 1),
+                    ),
+                    child: Text(
+                      _calendarViewType,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primaryBlue,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // Period navigation row (Only appears when Calendar mode is active)
+        if (_selectedView == 'Calendar')
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left_rounded, color: AppColors.textDark, size: 28),
+                  onPressed: _previousPeriod,
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _selectMonth(context),
+                  child: Text(
+                    DateFormat('MMMM yyyy').format(_selectedDate),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                if (!DateUtils.isSameDay(_selectedDate, DateTime.now())) ...[
                   GestureDetector(
                     onTap: () {
                       HapticFeedback.selectionClick();
                       setState(() {
-                        if (_calendarViewType == 'Month') {
-                          _calendarViewType = 'Week';
-                        } else if (_calendarViewType == 'Week') {
-                          _calendarViewType = '2 weeks';
-                        } else {
-                          _calendarViewType = 'Month';
-                        }
+                        _selectedDate = DateUtils.dateOnly(DateTime.now());
+                        _currentMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
                       });
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF), // light blue
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.2), width: 1),
+                        color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(
-                        _calendarViewType,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
+                      child: const Text(
+                        'Today',
+                        style: TextStyle(
                           color: AppColors.primaryBlue,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 11,
                         ),
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                ],
+                IconButton(
+                  icon: const Icon(Icons.chevron_right_rounded, color: AppColors.textDark, size: 28),
+                  onPressed: _nextPeriod,
+                ),
               ],
             ),
           ),
 
-          // Period navigation row (Only appears when Calendar mode is active)
-          if (_selectedView == 'Calendar')
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left_rounded, color: AppColors.textDark, size: 28),
-                    onPressed: _previousPeriod,
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => _selectMonth(context),
-                    child: Text(
-                      DateFormat('MMMM yyyy').format(_selectedDate),
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textDark,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  if (!DateUtils.isSameDay(_selectedDate, DateTime.now())) ...[
-                    GestureDetector(
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        setState(() {
-                          _selectedDate = DateUtils.dateOnly(DateTime.now());
-                          _currentMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryBlue.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Text(
-                          'Today',
-                          style: TextStyle(
-                            color: AppColors.primaryBlue,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right_rounded, color: AppColors.textDark, size: 28),
-                    onPressed: _nextPeriod,
-                  ),
-                ],
-              ),
-            ),
+        // Main body view
+        Expanded(
+          child: _selectedView == 'Calendar'
+              ? _buildCalendarGridSection(filteredExpenses, expenses, currency)
+              : _buildTimelineSection(expenses, currency),
+        ),
+      ],
+    );
 
-          // Main body view
-          Expanded(
-            child: _selectedView == 'Calendar'
-                ? _buildCalendarGridSection(filteredExpenses, expenses, currency)
-                : _buildTimelineSection(expenses, currency),
-          ),
-        ],
+    if (!widget.showHeader) {
+      return content;
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: GradientAppBar(
+        title: _selectedView == 'Calendar' ? 'Calendar View' : 'Timeline View',
       ),
+      body: content,
     );
   }
 

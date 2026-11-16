@@ -3,6 +3,7 @@ import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../data/datasource/settlement_local_datasource.dart';
 import '../../data/models/settlement_model.dart';
@@ -191,15 +192,47 @@ class SettlementController {
         .addSettlement(settlement);
   }
 
+  Future<void> settleSuggestion(SettlementSuggestion suggestion, {String? note}) async {
+    final settlements = _ref.read(settlementListProvider).value ?? [];
+    // 1. Mark direct pending debts from debtor to creditor as settled
+    final directDebts = settlements.where((s) =>
+        !s.isSettled &&
+        s.fromParticipantId == suggestion.fromParticipantId &&
+        s.toParticipantId == suggestion.toParticipantId).toList();
+
+    if (directDebts.isNotEmpty) {
+      for (final debt in directDebts) {
+        await markSettled(debt.id);
+      }
+    } else {
+      // 2. Multi-party settlement: record a completed payment settlement
+      final settlement = SettlementModel(
+        id: const Uuid().v4(),
+        fromParticipantId: suggestion.fromParticipantId,
+        fromParticipantName: suggestion.fromName,
+        toParticipantId: suggestion.toParticipantId,
+        toParticipantName: suggestion.toName,
+        amount: suggestion.amount,
+        expenseDescription: 'Settled: ${suggestion.fromName} paid ${suggestion.toName}',
+        createdAt: DateTime.now(),
+        settledAt: DateTime.now(),
+        note: note,
+      );
+      await _ref.read(settlementListProvider.notifier).addSettlement(settlement);
+
+      // Settle pending records associated with these participants
+      final participantDebts = settlements.where((s) =>
+          !s.isSettled &&
+          (s.fromParticipantId == suggestion.fromParticipantId ||
+           s.toParticipantId == suggestion.toParticipantId)).toList();
+      for (final d in participantDebts) {
+        await markSettled(d.id);
+      }
+    }
+  }
+
   Future<void> createSettlementFromSuggestion(SettlementSuggestion suggestion, {String? expenseDescription}) async {
-    await createSettlement(
-      fromParticipantId: suggestion.fromParticipantId,
-      fromParticipantName: suggestion.fromName,
-      toParticipantId: suggestion.toParticipantId,
-      toParticipantName: suggestion.toName,
-      amount: suggestion.amount,
-      expenseDescription: expenseDescription,
-    );
+    await settleSuggestion(suggestion, note: expenseDescription);
   }
 
   Future<void> markSettled(String id) async {

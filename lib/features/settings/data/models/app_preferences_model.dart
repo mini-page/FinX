@@ -41,6 +41,8 @@ class AppPreferencesModel {
     this.fabDoubleTapAction = 'voice',
     this.fabLongPressAction = 'scanner',
     this.navbarTabsJson = '',
+    this.deletedExpenseCategoriesJson = '',
+    this.deletedIncomeCategoriesJson = '',
   });
 
   static const AppPreferencesModel defaults = AppPreferencesModel(
@@ -81,6 +83,8 @@ class AppPreferencesModel {
     fabDoubleTapAction: 'voice',
     fabLongPressAction: 'scanner',
     navbarTabsJson: '',
+    deletedExpenseCategoriesJson: '',
+    deletedIncomeCategoriesJson: '',
   );
 
   final String themeModeKey;
@@ -179,6 +183,12 @@ class AppPreferencesModel {
   /// JSON-encoded array of active navigation tab IDs.
   final String navbarTabsJson;
 
+  /// JSON-encoded list of deleted built-in expense category names.
+  final String deletedExpenseCategoriesJson;
+
+  /// JSON-encoded list of deleted built-in income category names.
+  final String deletedIncomeCategoriesJson;
+
   bool get isPinEnabled => pinHash.isNotEmpty;
 
   AppPreferencesModel copyWith({
@@ -223,6 +233,8 @@ class AppPreferencesModel {
     String? fabDoubleTapAction,
     String? fabLongPressAction,
     String? navbarTabsJson,
+    String? deletedExpenseCategoriesJson,
+    String? deletedIncomeCategoriesJson,
   }) {
     return AppPreferencesModel(
       themeModeKey: themeModeKey ?? this.themeModeKey,
@@ -279,6 +291,10 @@ class AppPreferencesModel {
       fabDoubleTapAction: fabDoubleTapAction ?? this.fabDoubleTapAction,
       fabLongPressAction: fabLongPressAction ?? this.fabLongPressAction,
       navbarTabsJson: navbarTabsJson ?? this.navbarTabsJson,
+      deletedExpenseCategoriesJson:
+          deletedExpenseCategoriesJson ?? this.deletedExpenseCategoriesJson,
+      deletedIncomeCategoriesJson:
+          deletedIncomeCategoriesJson ?? this.deletedIncomeCategoriesJson,
     );
   }
 }
@@ -348,6 +364,8 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
     String fabDoubleTapAction = AppPreferencesModel.defaults.fabDoubleTapAction;
     String fabLongPressAction = AppPreferencesModel.defaults.fabLongPressAction;
     String navbarTabsJson = AppPreferencesModel.defaults.navbarTabsJson;
+    String deletedExpenseCategoriesJson = AppPreferencesModel.defaults.deletedExpenseCategoriesJson;
+    String deletedIncomeCategoriesJson = AppPreferencesModel.defaults.deletedIncomeCategoriesJson;
 
     try {
       if (reader.availableBytes > 0) locale = reader.readString();
@@ -413,6 +431,8 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
       if (reader.availableBytes > 0) fabDoubleTapAction = reader.readString();
       if (reader.availableBytes > 0) fabLongPressAction = reader.readString();
       if (reader.availableBytes > 0) navbarTabsJson = reader.readString();
+      if (reader.availableBytes > 0) deletedExpenseCategoriesJson = reader.readString();
+      if (reader.availableBytes > 0) deletedIncomeCategoriesJson = reader.readString();
     } catch (_) {
       // Fallback if reading fails
     }
@@ -457,6 +477,8 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
       fabDoubleTapAction: fabDoubleTapAction,
       fabLongPressAction: fabLongPressAction,
       navbarTabsJson: navbarTabsJson,
+      deletedExpenseCategoriesJson: deletedExpenseCategoriesJson,
+      deletedIncomeCategoriesJson: deletedIncomeCategoriesJson,
     );
   }
 
@@ -504,7 +526,9 @@ class AppPreferencesModelAdapter extends TypeAdapter<AppPreferencesModel> {
       ..writeBool(obj.aiSmsAiEnabled)
       ..writeString(obj.fabDoubleTapAction)
       ..writeString(obj.fabLongPressAction)
-      ..writeString(obj.navbarTabsJson);
+      ..writeString(obj.navbarTabsJson)
+      ..writeString(obj.deletedExpenseCategoriesJson)
+      ..writeString(obj.deletedIncomeCategoriesJson);
   }
 
   List<String> _readStringList(BinaryReader reader) {

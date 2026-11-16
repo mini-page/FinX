@@ -57,14 +57,15 @@ class AppBottomSheetContainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final maxHeight = mediaQuery.size.height * maxHeightFraction;
+    final availableHeight = (mediaQuery.size.height - mediaQuery.viewInsets.bottom - mediaQuery.padding.top - 24)
+        .clamp(200.0, mediaQuery.size.height * maxHeightFraction);
 
     return AnimatedPadding(
       padding: mediaQuery.viewInsets,
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut,
       child: Container(
-        constraints: BoxConstraints(maxHeight: maxHeight),
+        constraints: BoxConstraints(maxHeight: availableHeight),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(32)),

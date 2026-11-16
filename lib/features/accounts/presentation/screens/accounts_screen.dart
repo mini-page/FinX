@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../routes/app_routes.dart';
-import '../../../tags/presentation/screens/tags_screen.dart';
+
 import '../../../expense/presentation/screens/voice_entry_screen.dart';
 import '../../../settings/presentation/screens/support_screen.dart';
 import '../../../settings/presentation/screens/settings/permissions_settings_screen.dart';
@@ -12,8 +12,6 @@ import '../../../sms_parser/presentation/screens/sms_settings_sheet.dart';
 import 'tools_pages/savings_goals_screen.dart';
 import 'tools_pages/split_bill_screen.dart';
 import 'tools_pages/subscriptions_screen.dart';
-import 'tools_pages/location_map_screen.dart';
-import 'tools_pages/budgeting_hub_screen.dart';
 import 'package:expensio/features/gamification/presentation/screens/gamification_screen.dart';
 import '../../../../shared/widgets/universal_top_bar.dart';
 
@@ -32,7 +30,9 @@ class _ToolItem {
 }
 
 class AccountsScreen extends ConsumerStatefulWidget {
-  const AccountsScreen({super.key});
+  const AccountsScreen({super.key, this.showBackButton});
+
+  final bool? showBackButton;
 
   @override
   ConsumerState<AccountsScreen> createState() => _AccountsScreenState();
@@ -73,24 +73,8 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
       _ToolItem(
         icon: Icons.receipt_long_rounded,
         label: 'History',
-        color: const Color(0xFF0EA5E9), // Sky Blue
+        color: const Color(0xFF0EA5E9), // Sky Blue (combines Records, Calendar, and Timeline)
         onTap: (context) => AppRoutes.pushRecordsHistory(context),
-      ),
-      _ToolItem(
-        icon: Icons.calendar_month_rounded,
-        label: 'Calendar',
-        color: const Color(0xFF8B5CF6), // Purple
-        onTap: (context) => AppRoutes.pushCalendarView(context),
-      ),
-      _ToolItem(
-        icon: Icons.map_rounded,
-        label: 'Map',
-        color: const Color(0xFF10B981), // Emerald Green
-        onTap: (context) => Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
-            builder: (_) => const LocationMapScreen(),
-          ),
-        ),
       ),
       _ToolItem(
         icon: Icons.call_split_rounded,
@@ -109,16 +93,6 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
         onTap: (context) => Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
             builder: (_) => const SavingsGoalsScreen(),
-          ),
-        ),
-      ),
-      _ToolItem(
-        icon: Icons.account_balance_rounded,
-        label: 'Budgeting',
-        color: const Color(0xFF22C55E), // Green
-        onTap: (context) => Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
-            builder: (_) => const BudgetingHubScreen(),
           ),
         ),
       ),
@@ -142,27 +116,12 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
           ),
         ),
       ),
-      _ToolItem(
-        icon: Icons.label_rounded,
-        label: 'Tags',
-        color: const Color(0xFF3B82F6), // Blue
-        onTap: (context) => Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
-            builder: (_) => const TagsScreen(),
-          ),
-        ),
-      ),
+
       _ToolItem(
         icon: Icons.qr_code_scanner_rounded,
         label: 'Scan',
-        color: const Color(0xFF14B8A6), // Teal
+        color: const Color(0xFF14B8A6), // Teal (Unified Scanner: UPI, Receipts, Products)
         onTap: (context) => AppRoutes.pushUnifiedScanner(context),
-      ),
-      _ToolItem(
-        icon: Icons.qr_code_rounded,
-        label: 'UPI Pay',
-        color: const Color(0xFF06B6D4), // Cyan
-        onTap: (context) => AppRoutes.pushUpiScanner(context),
       ),
       _ToolItem(
         icon: Icons.mic_rounded,
@@ -232,7 +191,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
     return UniversalScreenScaffold(
       topBar: UniversalTopBar(
         title: 'Finance Tools',
-        showBackButton: false,
+        showBackButton: widget.showBackButton,
         isSearchOpen: _isSearchOpen,
         onSearchToggle: (open) {
           setState(() {

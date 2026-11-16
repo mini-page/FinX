@@ -3,9 +3,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
+import '../../../../core/ai/ai_model_providers.dart';
 import '../../../../core/services/widget_sync_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import 'package:expensio/core/utils/date_time_parser.dart';
 import '../../../../routes/app_routes.dart';
 import '../../data/models/expense_model.dart';
 import '../provider/expense_providers.dart';
@@ -15,9 +18,9 @@ import 'package:expensio/features/accounts/data/models/account_model.dart';
 import 'package:expensio/features/accounts/presentation/provider/account_providers.dart';
 import 'package:expensio/features/categories/presentation/widgets/expense_category.dart';
 
-// ── Public entry point ─────────────────────────────────────────────────────
+// ── Public Entry Point ──────────────────────────────────────────────────────
 
-/// Shows the [VoiceEntryScreen] as a modal bottom-sheet.
+/// Shows the unified [VoiceEntryScreen] as a modal bottom sheet.
 Future<ParsedCommand?> showVoiceEntrySheet(
   BuildContext context, {
   bool returnResult = false,
@@ -30,9 +33,17 @@ Future<ParsedCommand?> showVoiceEntrySheet(
   );
 }
 
-// ── Voice Message Model ────────────────────────────────────────────────────
+// ── Models ──────────────────────────────────────────────────────────────────
 
-enum ActionType { none, addExpense, addSubscription, appCommand }
+enum ActionType {
+  none,
+  addExpense,
+  addSubscription,
+  contributeGoal,
+  createGoal,
+  appCommand,
+  clarification,
+}
 
 class VoiceChatMessage {
   VoiceChatMessage({
@@ -41,6 +52,7 @@ class VoiceChatMessage {
     this.actionType = ActionType.none,
     this.actionData,
     this.actionExecuted = false,
+    this.quickOptions,
   });
 
   final bool isUser;
@@ -48,9 +60,32 @@ class VoiceChatMessage {
   final ActionType actionType;
   final Map<String, dynamic>? actionData;
   bool actionExecuted;
+  final List<String>? quickOptions;
 }
 
-// ── Screen ─────────────────────────────────────────────────────────────────
+class ParsedCommand {
+  const ParsedCommand({
+    required this.amount,
+    required this.type,
+    required this.category,
+    this.note = '',
+    this.date,
+    this.subcategory,
+    this.accountId,
+    this.accountName,
+  });
+
+  final double amount;
+  final TransactionType type;
+  final String category;
+  final String note;
+  final DateTime? date;
+  final String? subcategory;
+  final String? accountId;
+  final String? accountName;
+}
+
+// ── Unified Expensio AI Assistant Screen ───────────────────────────────────
 
 class VoiceEntryScreen extends ConsumerStatefulWidget {
   const VoiceEntryScreen({super.key, this.returnResult = false});
@@ -62,19 +97,14 @@ class VoiceEntryScreen extends ConsumerStatefulWidget {
 }
 
 class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
-  int _activeTab = 0; // 0 = AI Copilot, 1 = Quick Log (Generic)
-
-  // ── AI Copilot State ──
   final List<VoiceChatMessage> _chatMessages = [];
-  final TextEditingController _aiTextController = TextEditingController();
-  final ScrollController _aiScrollController = ScrollController();
-  bool _isAiListening = false;
-  bool _isAiProcessing = false;
+  final TextEditingController _textController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  bool _isListening = false;
+  bool _isProcessing = false;
 
-  // ── Quick Log (Generic) State ──
-  _VoiceState _genericState = _VoiceState.idle;
-  String? _genericRecognisedText;
-  ParsedCommand? _genericParsed;
+  // Pending context for interactive clarification questions
+  Map<String, dynamic>? _pendingDraft;
 
   @override
   void initState() {
@@ -83,23 +113,23 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
       VoiceChatMessage(
         isUser: false,
         text:
-            "Hi! I'm your Expensio AI Copilot. Speak or type to log transactions, manage subscriptions, or change settings.\n\nExamples:\n• \"Spent ₹450 at Dominos on dinner\"\n• \"Add Netflix subscription 499 monthly\"\n• \"Turn on dark mode\"",
+            "Hi! I'm your Expensio AI Assistant. Speak or type to log transactions, manage savings goals, add subscriptions, or control the app.\n\nTry asking:\n• \"Spent 250 on lunch yesterday at 8pm\"\n• \"Add 500 to Vacation goal\"\n• \"Create goal Laptop target 50000\"\n• \"Netflix 499 monthly\"",
       ),
     );
   }
 
   @override
   void dispose() {
-    _aiTextController.dispose();
-    _aiScrollController.dispose();
+    _textController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_aiScrollController.hasClients) {
-        _aiScrollController.animateTo(
-          _aiScrollController.position.maxScrollExtent,
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
@@ -107,15 +137,15 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
     });
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
     final screenHeight = MediaQuery.of(context).size.height;
+    final isCloud = ref.watch(isAiCloudBackedProvider);
 
     return Container(
-      height: screenHeight * 0.82,
+      height: screenHeight * 0.85,
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
@@ -136,57 +166,257 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Header with Dual-Tab Switcher
+          // Header: AI Assistant Branding + Close
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x268B5CF6),
+                        blurRadius: 10,
+                        offset: Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.auto_awesome_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        _activeTab == 0 ? 'AI Copilot' : 'Quick Voice Log',
-                        style: const TextStyle(
+                      const Text(
+                        'Expensio AI Assistant',
+                        style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                           color: AppColors.textDark,
+                          letterSpacing: -0.3,
                         ),
                       ),
-                      Text(
-                        _activeTab == 0
-                            ? 'Natural voice agent with actions & chat'
-                            : 'Fast offline parser (English / Hinglish)',
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          color: AppColors.textMuted,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isCloud ? const Color(0xFF10B981) : const Color(0xFF8B5CF6),
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            isCloud ? 'Gemini AI Active' : 'Smart NLP Engine • Offline',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isCloud ? const Color(0xFF059669) : const Color(0xFF7C3AED),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                // Dual Tab Switcher Pill
-                _VoiceTabSwitcher(
-                  currentIndex: _activeTab,
-                  onSwitch: (tab) {
-                    HapticFeedback.selectionClick();
-                    setState(() => _activeTab = tab);
-                  },
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded, color: AppColors.textMuted),
+                  tooltip: 'Close',
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+
+          // Suggestion Chips Bar
+          SizedBox(
+            height: 34,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                _QuickChip(
+                  label: 'Spent 250 on lunch yesterday',
+                  onTap: () => _handleUnifiedInput('Spent 250 on lunch yesterday'),
+                ),
+                _QuickChip(
+                  label: 'Add 500 to Vacation goal',
+                  onTap: () => _handleUnifiedInput('Add 500 to Vacation goal'),
+                ),
+                _QuickChip(
+                  label: 'Create goal Laptop 50000',
+                  onTap: () => _handleUnifiedInput('Create goal Laptop 50000'),
+                ),
+                _QuickChip(
+                  label: 'Netflix 499 monthly',
+                  onTap: () => _handleUnifiedInput('Netflix 499 monthly'),
+                ),
+                _QuickChip(
+                  label: 'Salary 50000 credited',
+                  onTap: () => _handleUnifiedInput('Salary 50000 credited'),
+                ),
+                _QuickChip(
+                  label: 'Dark mode',
+                  onTap: () => _handleUnifiedInput('turn on dark mode'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
           const Divider(color: Color(0xFFF1F5F9), height: 1),
 
-          // Tab Body
+          // Chat Messages Area
           Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
-              child: _activeTab == 0
-                  ? _buildAiCopilotTab(bottomInset)
-                  : _buildQuickLogTab(),
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              itemCount: _chatMessages.length,
+              itemBuilder: (context, index) {
+                final msg = _chatMessages[index];
+                return _buildChatMessageItem(msg);
+              },
+            ),
+          ),
+
+          if (_isProcessing)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8B5CF6)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Thinking & extracting details…',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF8B5CF6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Bottom Voice & Text Input Bar
+          Container(
+            padding: EdgeInsets.fromLTRB(16, 10, 16, (bottomInset > 0 ? bottomInset + 14 : safeBottom + 20)),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // Voice Mic Button
+                GestureDetector(
+                  onTap: _isListening ? null : _startVoiceInput,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: _isListening
+                            ? [AppColors.danger, Colors.redAccent]
+                            : [const Color(0xFF8B5CF6), const Color(0xFF6366F1)],
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: (_isListening
+                                  ? AppColors.danger
+                                  : const Color(0xFF8B5CF6))
+                              .withValues(alpha: 0.35),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      _isListening ? Icons.mic : Icons.mic_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                // Text Input Field
+                Expanded(
+                  child: Container(
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: TextField(
+                      controller: _textController,
+                      decoration: const InputDecoration(
+                        hintText: 'Speak or type command…',
+                        hintStyle: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textMuted,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onSubmitted: (val) {
+                        if (val.trim().isNotEmpty) {
+                          _handleUnifiedInput(val.trim());
+                          _textController.clear();
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Send Button
+                IconButton(
+                  onPressed: () {
+                    final text = _textController.text.trim();
+                    if (text.isNotEmpty) {
+                      _handleUnifiedInput(text);
+                      _textController.clear();
+                    }
+                  },
+                  icon: const Icon(
+                    Icons.send_rounded,
+                    color: Color(0xFF8B5CF6),
+                    size: 22,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -194,147 +424,7 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
     );
   }
 
-  // ── Tab 0: AI Copilot (Conversational + Actions) ──────────────────────────
-
-  Widget _buildAiCopilotTab(double bottomInset) {
-    return Column(
-      key: const ValueKey('ai_copilot_tab'),
-      children: [
-        // Chat Message List
-        Expanded(
-          child: ListView.builder(
-            controller: _aiScrollController,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            itemCount: _chatMessages.length,
-            itemBuilder: (context, index) {
-              final msg = _chatMessages[index];
-              return _buildChatMessageItem(msg);
-            },
-          ),
-        ),
-
-        if (_isAiProcessing)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7B2FF7)),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'Copilot is processing intent…',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF7B2FF7).withValues(alpha: 0.9),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-        // Bottom Voice & Text Input Bar
-        Container(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottomInset),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, -4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              // Mic Button
-              GestureDetector(
-                onTap: _isAiListening ? null : _startAiVoiceInput,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: _isAiListening
-                        ? AppColors.danger
-                        : const Color(0xFF7B2FF7),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: (_isAiListening
-                                ? AppColors.danger
-                                : const Color(0xFF7B2FF7))
-                            .withValues(alpha: 0.3),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    _isAiListening ? Icons.mic : Icons.mic_rounded,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-
-              // Text Field
-              Expanded(
-                child: Container(
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: TextField(
-                    controller: _aiTextController,
-                    decoration: const InputDecoration(
-                      hintText: 'Speak or type command…',
-                      hintStyle: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textMuted,
-                      ),
-                      border: InputBorder.none,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                    onSubmitted: (val) {
-                      if (val.trim().isNotEmpty) {
-                        _handleAiInput(val.trim());
-                        _aiTextController.clear();
-                      }
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-
-              // Send Button
-              IconButton(
-                onPressed: () {
-                  final text = _aiTextController.text.trim();
-                  if (text.isNotEmpty) {
-                    _handleAiInput(text);
-                    _aiTextController.clear();
-                  }
-                },
-                icon: const Icon(Icons.send_rounded,
-                    color: Color(0xFF7B2FF7), size: 22),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  // ── Chat Items & Action Cards ─────────────────────────────────────────────
 
   Widget _buildChatMessageItem(VoiceChatMessage msg) {
     if (msg.isUser) {
@@ -349,7 +439,9 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: const Color(0xFF7B2FF7),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
+                ),
                 borderRadius: BorderRadius.circular(18).copyWith(
                   bottomRight: const Radius.circular(2),
                 ),
@@ -368,7 +460,7 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
       );
     }
 
-    // AI message
+    // AI Message
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Row(
@@ -378,12 +470,12 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              color: const Color(0xFF7B2FF7).withValues(alpha: 0.12),
+              color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
             child: const Icon(
               Icons.auto_awesome_rounded,
-              color: Color(0xFF7B2FF7),
+              color: Color(0xFF8B5CF6),
               size: 15,
             ),
           ),
@@ -413,6 +505,31 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
                   ),
                 ),
 
+                // Quick Clarification Chips
+                if (msg.quickOptions != null && msg.quickOptions!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: msg.quickOptions!.map((opt) {
+                      return ActionChip(
+                        label: Text(
+                          opt,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF7C3AED),
+                          ),
+                        ),
+                        backgroundColor: const Color(0xFFF5F3FF),
+                        side: const BorderSide(color: Color(0xFFDDD6FE)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        onPressed: () => _handleUnifiedInput(opt),
+                      );
+                    }).toList(),
+                  ),
+                ],
+
                 // Attached Action Card
                 if (msg.actionType != ActionType.none &&
                     msg.actionData != null) ...[
@@ -429,23 +546,36 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
 
   Widget _buildActionCard(VoiceChatMessage msg) {
     final data = msg.actionData!;
+
+    // ── 1. Add Transaction Card ──
     if (msg.actionType == ActionType.addExpense) {
       final amount = (data['amount'] as num?)?.toDouble() ?? 0;
-      final category = data['category'] as String? ?? 'Other';
+      final category = data['category'] as String? ?? 'Uncategorised';
       final note = data['note'] as String? ?? '';
       final isIncome = data['type'] == 'income';
+      final date = data['date'] is DateTime ? data['date'] as DateTime : DateTime.now();
+      final accountId = data['accountId'] as String?;
+      final accountName = data['accountName'] as String?;
+      final subcategory = data['subcategory'] as String?;
 
       return Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: msg.actionExecuted
                 ? AppColors.success
-                : const Color(0xFF7B2FF7).withValues(alpha: 0.3),
-            width: 1.2,
+                : const Color(0xFF8B5CF6).withValues(alpha: 0.35),
+            width: 1.3,
           ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0C000000),
+              blurRadius: 10,
+              offset: Offset(0, 3),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -455,16 +585,16 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
               children: [
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                   decoration: BoxDecoration(
                     color: (isIncome ? AppColors.success : AppColors.danger)
-                        .withValues(alpha: 0.1),
+                        .withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     isIncome ? 'Income' : 'Expense',
                     style: TextStyle(
-                      fontSize: 10.5,
+                      fontSize: 11,
                       fontWeight: FontWeight.w800,
                       color: isIncome ? AppColors.success : AppColors.danger,
                     ),
@@ -473,78 +603,158 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
                 Text(
                   (isIncome ? '+' : '-') + '₹' + amount.toStringAsFixed(0),
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 18,
                     fontWeight: FontWeight.w900,
                     color: isIncome ? AppColors.success : AppColors.danger,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
-              '$category' + (note.isNotEmpty ? ' • ' + note : ''),
+              category + (subcategory != null ? ' • $subcategory' : '') + (note.isNotEmpty ? ' • $note' : ''),
               style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
                 color: AppColors.textDark,
               ),
             ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              height: 34,
-              child: ElevatedButton.icon(
-                onPressed: msg.actionExecuted
-                    ? null
-                    : () async {
-                        HapticFeedback.mediumImpact();
-                        await ref.read(expenseControllerProvider).addExpense(
-                              amount: amount,
-                              category: category,
-                              date: DateTime.now(),
-                              note: note,
-                              type: isIncome
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.account_balance_wallet_outlined, size: 14, color: AppColors.textMuted),
+                const SizedBox(width: 4),
+                Text(
+                  accountName ?? 'None (Unspecified)',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Icon(Icons.calendar_today_rounded, size: 13, color: AppColors.textMuted),
+                const SizedBox(width: 4),
+                Text(
+                  DateFormat('MMM d • h:mm a').format(date),
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                // Edit in composer button
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: msg.actionExecuted
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                            AppRoutes.pushAddExpense(
+                              context,
+                              initialAmount: amount,
+                              initialCategory: category,
+                              initialNote: note,
+                              initialDate: date,
+                              initialAccountId: accountId,
+                              initialType: isIncome
                                   ? TransactionType.income
                                   : TransactionType.expense,
                             );
-                        setState(() {
-                          msg.actionExecuted = true;
-                          _chatMessages.add(
-                            VoiceChatMessage(
-                              isUser: false,
-                              text:
-                                  "✓ Logged ₹" + amount.toStringAsFixed(0) + " $category transaction successfully!",
-                            ),
-                          );
-                        });
-                        _scrollToBottom();
-                      },
-                icon: Icon(
-                  msg.actionExecuted ? Icons.check_circle : Icons.add_circle,
-                  size: 16,
-                ),
-                label: Text(
-                  msg.actionExecuted ? 'Logged' : 'Confirm & Log Transaction',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w800, fontSize: 12),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: msg.actionExecuted
-                      ? AppColors.success
-                      : const Color(0xFF7B2FF7),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                          },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Edit in Composer',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                // Confirm & Save
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: msg.actionExecuted
+                        ? null
+                        : () async {
+                            HapticFeedback.mediumImpact();
+                            if (widget.returnResult) {
+                              Navigator.of(context).pop(
+                                ParsedCommand(
+                                  amount: amount,
+                                  type: isIncome
+                                      ? TransactionType.income
+                                      : TransactionType.expense,
+                                  category: category,
+                                  note: note,
+                                  date: date,
+                                  subcategory: subcategory,
+                                  accountId: accountId,
+                                  accountName: accountName,
+                                ),
+                              );
+                              return;
+                            }
+                            await ref.read(expenseControllerProvider).addExpense(
+                                  amount: amount,
+                                  category: category,
+                                  date: date,
+                                  note: note,
+                                  type: isIncome
+                                      ? TransactionType.income
+                                      : TransactionType.expense,
+                                  accountId: accountId,
+                                  subcategory: subcategory,
+                                );
+                            setState(() {
+                              msg.actionExecuted = true;
+                              _chatMessages.add(
+                                VoiceChatMessage(
+                                  isUser: false,
+                                  text:
+                                      "✓ Saved ₹${amount.toStringAsFixed(0)} for $category successfully!",
+                                ),
+                              );
+                            });
+                            _scrollToBottom();
+                          },
+                    icon: Icon(
+                      msg.actionExecuted ? Icons.check_circle : Icons.check_rounded,
+                      size: 16,
+                    ),
+                    label: Text(
+                      msg.actionExecuted ? 'Saved' : 'Confirm & Save',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: msg.actionExecuted
+                          ? AppColors.success
+                          : const Color(0xFF8B5CF6),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       );
     }
 
+    // ── 2. Add Subscription Card ──
     if (msg.actionType == ActionType.addSubscription) {
       final name = data['name'] as String? ?? 'Subscription';
       final amount = (data['amount'] as num?)?.toDouble() ?? 0;
@@ -558,7 +768,7 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
           border: Border.all(
             color: msg.actionExecuted
                 ? AppColors.success
-                : const Color(0xFF7B2FF7).withValues(alpha: 0.3),
+                : const Color(0xFF8B5CF6).withValues(alpha: 0.35),
             width: 1.2,
           ),
         ),
@@ -577,7 +787,7 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
                   ),
                 ),
                 Text(
-                  '₹' + amount.toStringAsFixed(0) + '/mo',
+                  '₹${amount.toStringAsFixed(0)}/mo',
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
@@ -620,16 +830,14 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
                             VoiceChatMessage(
                               isUser: false,
                               text:
-                                  "✓ Created recurring subscription for $name (₹" + amount.toStringAsFixed(0) + "/mo)!",
+                                  "✓ Created recurring subscription for $name (₹${amount.toStringAsFixed(0)}/mo)!",
                             ),
                           );
                         });
                         _scrollToBottom();
                       },
                 icon: Icon(
-                  msg.actionExecuted
-                      ? Icons.check_circle
-                      : Icons.autorenew_rounded,
+                  msg.actionExecuted ? Icons.check_circle : Icons.autorenew_rounded,
                   size: 16,
                 ),
                 label: Text(
@@ -640,7 +848,7 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: msg.actionExecuted
                       ? AppColors.success
-                      : const Color(0xFF7B2FF7),
+                      : const Color(0xFF8B5CF6),
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -654,6 +862,201 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
       );
     }
 
+    // ── 3. Contribute to Savings Goal Card ──
+    if (msg.actionType == ActionType.contributeGoal) {
+      final goalName = data['goalName'] as String? ?? 'Goal';
+      final amount = (data['amount'] as num?)?.toDouble() ?? 0;
+      final current = (data['current'] as num?)?.toDouble() ?? 0;
+      final target = (data['target'] as num?)?.toDouble() ?? 0;
+      final goalId = data['goalId'] as String? ?? '';
+
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: msg.actionExecuted
+                ? AppColors.success
+                : const Color(0xFF8B5CF6).withValues(alpha: 0.35),
+            width: 1.2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Text('🎯 ', style: TextStyle(fontSize: 16)),
+                    Text(
+                      goalName,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  '+₹${amount.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF10B981),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Current: ₹${current.toStringAsFixed(0)} / Target: ₹${target.toStringAsFixed(0)}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textMuted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 36,
+              child: FilledButton.icon(
+                onPressed: msg.actionExecuted
+                    ? null
+                    : () async {
+                        HapticFeedback.mediumImpact();
+                        await _addMoneyToGoal(goalId, amount);
+                        setState(() {
+                          msg.actionExecuted = true;
+                          _chatMessages.add(
+                            VoiceChatMessage(
+                              isUser: false,
+                              text:
+                                  "✓ Added ₹${amount.toStringAsFixed(0)} to goal \"$goalName\"! New progress: ₹${(current + amount).toStringAsFixed(0)} / ₹${target.toStringAsFixed(0)}.",
+                            ),
+                          );
+                        });
+                        _scrollToBottom();
+                      },
+                icon: Icon(
+                  msg.actionExecuted ? Icons.check_circle : Icons.savings_rounded,
+                  size: 16,
+                ),
+                label: Text(
+                  msg.actionExecuted ? 'Added to Goal' : 'Confirm & Add to Goal',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: msg.actionExecuted
+                      ? AppColors.success
+                      : const Color(0xFF8B5CF6),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ── 4. Create New Goal Card ──
+    if (msg.actionType == ActionType.createGoal) {
+      final goalName = data['goalName'] as String? ?? 'New Goal';
+      final targetAmount = (data['targetAmount'] as num?)?.toDouble() ?? 0;
+
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: msg.actionExecuted
+                ? AppColors.success
+                : const Color(0xFF8B5CF6).withValues(alpha: 0.35),
+            width: 1.2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Text('🎯 ', style: TextStyle(fontSize: 16)),
+                    Text(
+                      goalName,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  'Target: ₹${targetAmount.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF8B5CF6),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 36,
+              child: FilledButton.icon(
+                onPressed: msg.actionExecuted
+                    ? null
+                    : () async {
+                        HapticFeedback.mediumImpact();
+                        await _createNewGoal(goalName, targetAmount);
+                        setState(() {
+                          msg.actionExecuted = true;
+                          _chatMessages.add(
+                            VoiceChatMessage(
+                              isUser: false,
+                              text:
+                                  "✓ Created new savings goal \"$goalName\" with target ₹${targetAmount.toStringAsFixed(0)}!",
+                            ),
+                          );
+                        });
+                        _scrollToBottom();
+                      },
+                icon: Icon(
+                  msg.actionExecuted ? Icons.check_circle : Icons.flag_rounded,
+                  size: 16,
+                ),
+                label: Text(
+                  msg.actionExecuted ? 'Goal Created' : 'Confirm & Create Goal',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: msg.actionExecuted
+                      ? AppColors.success
+                      : const Color(0xFF8B5CF6),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ── 5. App Command Card ──
     if (msg.actionType == ActionType.appCommand) {
       final cmd = data['command'] as String? ?? '';
       final label = data['label'] as String? ?? 'Execute';
@@ -672,7 +1075,7 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
           ),
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF7B2FF7),
+            backgroundColor: const Color(0xFF8B5CF6),
             foregroundColor: Colors.white,
             elevation: 0,
             shape: RoundedRectangleBorder(
@@ -686,30 +1089,92 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
     return const SizedBox.shrink();
   }
 
-  Future<void> _startAiVoiceInput() async {
-    setState(() => _isAiListening = true);
+  // ── Goal Management Logic ──────────────────────────────────────────────────
+
+  Future<void> _addMoneyToGoal(String goalId, double amount) async {
+    final rawJson = ref.read(savingsGoalsJsonProvider);
+    List<dynamic> list = [];
+    try {
+      if (rawJson.isNotEmpty) list = jsonDecode(rawJson) as List<dynamic>;
+    } catch (_) {}
+
+    final updated = list.map((item) {
+      final map = Map<String, dynamic>.from(item as Map);
+      if (map['id'] == goalId) {
+        final cur = (map['currentAmount'] as num?)?.toDouble() ?? 0;
+        map['currentAmount'] = cur + amount;
+      }
+      return map;
+    }).toList();
+
+    await ref.read(appPreferencesControllerProvider).setSavingsGoalsJson(jsonEncode(updated));
+  }
+
+  Future<void> _createNewGoal(String name, double target) async {
+    final rawJson = ref.read(savingsGoalsJsonProvider);
+    List<dynamic> list = [];
+    try {
+      if (rawJson.isNotEmpty) list = jsonDecode(rawJson) as List<dynamic>;
+    } catch (_) {}
+
+    final newGoal = {
+      'id': 'goal_${DateTime.now().millisecondsSinceEpoch}',
+      'name': name,
+      'targetAmount': target,
+      'currentAmount': 0.0,
+      'emoji': '🎯',
+      'colorHex': '#8B5CF6',
+    };
+
+    list.add(newGoal);
+    await ref.read(appPreferencesControllerProvider).setSavingsGoalsJson(jsonEncode(list));
+  }
+
+  // ── Core Input Processing Pipeline ────────────────────────────────────────
+
+  Future<void> _startVoiceInput() async {
+    setState(() => _isListening = true);
     final text = await WidgetSyncService.startVoiceInput();
-    setState(() => _isAiListening = false);
+    setState(() => _isListening = false);
 
     if (text != null && text.trim().isNotEmpty) {
-      _handleAiInput(text.trim());
+      _handleUnifiedInput(text.trim());
     }
   }
 
-  Future<void> _handleAiInput(String query) async {
+  Future<void> _handleUnifiedInput(String query) async {
     HapticFeedback.lightImpact();
     setState(() {
       _chatMessages.add(VoiceChatMessage(isUser: true, text: query));
-      _isAiProcessing = true;
+      _isProcessing = true;
     });
     _scrollToBottom();
 
     final lower = query.toLowerCase();
 
+    // Check if answering a pending clarification question
+    if (_pendingDraft != null) {
+      final amountMatch = RegExp(r'(\d+(?:[.,]\d{1,2})?)').firstMatch(query);
+      if (amountMatch != null) {
+        final amount = double.tryParse(amountMatch.group(1)!.replaceAll(',', '.')) ?? 0;
+        if (amount > 0) {
+          final draft = _pendingDraft!;
+          _pendingDraft = null;
+          draft['amount'] = amount;
+          _finishResponse(
+            "Got it! I prepared the ${draft['category']} transaction of ₹${amount.toStringAsFixed(0)}.",
+            actionType: ActionType.addExpense,
+            actionData: draft,
+          );
+          return;
+        }
+      }
+    }
+
     // ── 1. Check quick app command intents ──
     if (lower.contains('dark mode') || lower.contains('dark theme')) {
       await ref.read(appPreferencesControllerProvider).setThemeMode('dark');
-      _finishAiResponse(
+      _finishResponse(
         "I've switched the app to Dark mode.",
         actionType: ActionType.appCommand,
         actionData: {'command': 'dark_mode', 'label': 'Dark Mode Enabled'},
@@ -719,7 +1184,7 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
 
     if (lower.contains('light mode') || lower.contains('light theme')) {
       await ref.read(appPreferencesControllerProvider).setThemeMode('light');
-      _finishAiResponse(
+      _finishResponse(
         "I've switched the app to Light mode.",
         actionType: ActionType.appCommand,
         actionData: {'command': 'light_mode', 'label': 'Light Mode Enabled'},
@@ -729,10 +1194,8 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
 
     if (lower.contains('privacy mode') || lower.contains('hide amount')) {
       final currentPrivacy = ref.read(privacyModeEnabledProvider);
-      await ref
-          .read(appPreferencesControllerProvider)
-          .setPrivacyMode(!currentPrivacy);
-      _finishAiResponse(
+      await ref.read(appPreferencesControllerProvider).setPrivacyMode(!currentPrivacy);
+      _finishResponse(
         !currentPrivacy ? 'Privacy mode enabled.' : 'Privacy mode disabled.',
         actionType: ActionType.appCommand,
         actionData: {'command': 'privacy', 'label': 'Privacy Mode Toggled'},
@@ -740,14 +1203,85 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
       return;
     }
 
-    if (lower.contains('setting')) {
+    if (lower.contains('open settings') || lower == 'settings') {
       Navigator.of(context).pop();
       AppRoutes.pushSettings(context);
       return;
     }
 
-    // ── 2. Check subscription intent ──
-    if (lower.contains('subscript') || lower.contains('netflix') || lower.contains('spotify') || lower.contains('youtube') || lower.contains('recharge')) {
+    // ── 2. Check Savings Goal intents ──
+    // e.g. "Add 500 to Vacation goal", "Put 1000 in phone", "Contribute 2000 to laptop"
+    final contributeMatch = RegExp(
+      r'(?:add|put|deposit|contribute|saved)\s+(?:₹|rs\.?\s*)?(\d+(?:[.,]\d{1,2})?)\s+(?:to|in|towards|for)\s+(.+?)(?:\s+goal)?$',
+      caseSensitive: false,
+    ).firstMatch(query);
+
+    if (contributeMatch != null) {
+      final amount = double.tryParse(contributeMatch.group(1)!.replaceAll(',', '.')) ?? 0;
+      final targetName = contributeMatch.group(2)!.trim().toLowerCase();
+
+      final rawGoals = ref.read(savingsGoalsJsonProvider);
+      List<dynamic> goalsList = [];
+      try {
+        if (rawGoals.isNotEmpty) goalsList = jsonDecode(rawGoals) as List<dynamic>;
+      } catch (_) {}
+
+      Map<String, dynamic>? matchedGoal;
+      for (final g in goalsList) {
+        final gMap = Map<String, dynamic>.from(g as Map);
+        final name = (gMap['name'] as String? ?? '').toLowerCase();
+        if (name == targetName || name.contains(targetName) || targetName.contains(name)) {
+          matchedGoal = gMap;
+          break;
+        }
+      }
+
+      if (matchedGoal != null && amount > 0) {
+        _finishResponse(
+          "I found your \"${matchedGoal['name']}\" goal. Ready to add ₹${amount.toStringAsFixed(0)}?",
+          actionType: ActionType.contributeGoal,
+          actionData: {
+            'goalId': matchedGoal['id'],
+            'goalName': matchedGoal['name'],
+            'amount': amount,
+            'current': (matchedGoal['currentAmount'] as num?)?.toDouble() ?? 0,
+            'target': (matchedGoal['targetAmount'] as num?)?.toDouble() ?? 0,
+          },
+        );
+        return;
+      }
+    }
+
+    // e.g. "Create goal Laptop 50000" or "New goal Bike target 80000"
+    final createGoalMatch = RegExp(
+      r'(?:create|new|start|set)\s+goal\s+(.+?)\s+(?:target\s+|amount\s+|of\s+)?(?:₹|rs\.?\s*)?(\d+(?:[.,]\d{1,2})?)$',
+      caseSensitive: false,
+    ).firstMatch(query);
+
+    if (createGoalMatch != null) {
+      final goalName = createGoalMatch.group(1)!.trim();
+      final targetAmount = double.tryParse(createGoalMatch.group(2)!.replaceAll(',', '.')) ?? 0;
+      if (goalName.isNotEmpty && targetAmount > 0) {
+        _finishResponse(
+          "Ready to set up a new savings milestone for \"$goalName\" with a target of ₹${targetAmount.toStringAsFixed(0)}.",
+          actionType: ActionType.createGoal,
+          actionData: {
+            'goalName': goalName,
+            'targetAmount': targetAmount,
+          },
+        );
+        return;
+      }
+    }
+
+    // ── 3. Check Subscription intent ──
+    if (lower.contains('subscript') ||
+        lower.contains('netflix') ||
+        lower.contains('spotify') ||
+        lower.contains('youtube') ||
+        lower.contains('recharge') ||
+        lower.contains('hotstar') ||
+        lower.contains('prime video')) {
       final amountMatch = RegExp(r'(\d+)').firstMatch(lower);
       final amount = amountMatch != null ? double.tryParse(amountMatch.group(1)!) ?? 199 : 199.0;
       String name = 'Subscription';
@@ -755,8 +1289,10 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
       else if (lower.contains('spotify')) name = 'Spotify';
       else if (lower.contains('youtube')) name = 'YouTube Premium';
       else if (lower.contains('recharge')) name = 'Mobile Recharge';
+      else if (lower.contains('hotstar')) name = 'Disney+ Hotstar';
+      else if (lower.contains('prime')) name = 'Amazon Prime';
 
-      _finishAiResponse(
+      _finishResponse(
         "I've prepared a recurring subscription for $name.",
         actionType: ActionType.addSubscription,
         actionData: {
@@ -768,7 +1304,7 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
       return;
     }
 
-    // ── 3. Parse expense / income intent ──
+    // ── 4. Parse Expense / Income intent with DateTime recognition & Fallbacks ──
     final accounts = ref.read(accountListProvider).value ?? [];
     final expenseCats = ref.read(allExpenseCategoriesProvider);
     final incomeCats = ref.read(allIncomeCategoriesProvider);
@@ -781,18 +1317,22 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
       incomeCategories: incomeCats,
       categorySubcategories: subcats,
     );
+
     if (parsed != null && parsed.amount > 0) {
       final isIncome = parsed.type == TransactionType.income;
       final subInfo = parsed.subcategory != null ? " (${parsed.subcategory})" : "";
-      final accInfo = parsed.accountName != null ? " via ${parsed.accountName}" : "";
-      _finishAiResponse(
-        "I recognized a " + (isIncome ? 'income' : 'expense') + " of ₹" + parsed.amount.toStringAsFixed(0) + " for " + parsed.category + subInfo + accInfo + ".",
+      final accInfo = parsed.accountName != null ? " via ${parsed.accountName}" : " (no account specified)";
+      final dateInfo = parsed.date != null ? " on " + DateFormat('MMM d, h:mm a').format(parsed.date!) : "";
+
+      _finishResponse(
+        "Recognized " + (isIncome ? 'income' : 'expense') + " of ₹${parsed.amount.toStringAsFixed(0)} for ${parsed.category}$subInfo$accInfo$dateInfo.",
         actionType: ActionType.addExpense,
         actionData: {
           'amount': parsed.amount,
           'category': parsed.category,
           'note': parsed.note,
           'type': isIncome ? 'income' : 'expense',
+          'date': parsed.date ?? DateTime.now(),
           if (parsed.subcategory != null) 'subcategory': parsed.subcategory,
           if (parsed.accountId != null) 'accountId': parsed.accountId,
           if (parsed.accountName != null) 'accountName': parsed.accountName,
@@ -801,25 +1341,50 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
       return;
     }
 
-    // ── 4. General fallback conversational reply ──
-    _finishAiResponse(
-      "I heard: \"$query\". Try saying something like 'Spent 250 on food' or 'Add Netflix 499'.",
+    // ── 5. Missing Amount Clarification Flow ──
+    // If user mentioned an item or merchant without an amount, ask them!
+    if (parsed != null && parsed.amount <= 0 && parsed.note.isNotEmpty) {
+      _pendingDraft = {
+        'amount': 0.0,
+        'category': parsed.category,
+        'note': parsed.note,
+        'type': parsed.type == TransactionType.income ? 'income' : 'expense',
+        'date': parsed.date ?? DateTime.now(),
+        'accountId': parsed.accountId,
+        'accountName': parsed.accountName,
+        'subcategory': parsed.subcategory,
+      };
+
+      _finishResponse(
+        "How much did you spend on \"${parsed.note}\"?",
+        actionType: ActionType.clarification,
+        quickOptions: ['₹50', '₹100', '₹250', '₹500', '₹1000'],
+      );
+      return;
+    }
+
+    // ── 6. Fallback reply ──
+    _finishResponse(
+      "I heard: \"$query\". You can say things like:\n• \"Spent 350 on Groceries today\"\n• \"Add 500 to Vacation goal\"\n• \"Salary 60000 yesterday\"\n• \"Create goal Phone 30000\"",
+      quickOptions: ['Spent 250 lunch', 'Salary 50000', 'Add 500 to Vacation'],
     );
   }
 
-  void _finishAiResponse(
+  void _finishResponse(
     String text, {
     ActionType actionType = ActionType.none,
     Map<String, dynamic>? actionData,
+    List<String>? quickOptions,
   }) {
     setState(() {
-      _isAiProcessing = false;
+      _isProcessing = false;
       _chatMessages.add(
         VoiceChatMessage(
           isUser: false,
           text: text,
           actionType: actionType,
           actionData: actionData,
+          quickOptions: quickOptions,
         ),
       );
     });
@@ -832,519 +1397,9 @@ class _VoiceEntryScreenState extends ConsumerState<VoiceEntryScreen> {
       AppRoutes.pushSettings(context);
     }
   }
-
-  // ── Tab 1: Quick Log (Fast Offline Heuristic Parser) ──────────────────────
-
-  Widget _buildQuickLogTab() {
-    return SingleChildScrollView(
-      key: const ValueKey('quick_log_tab'),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Column(
-        children: [
-          // Sample prompts chips
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: [
-              _SampleChip(
-                label: '250 food expense',
-                onTap: () => _runGenericVoiceWithText('250 food expense'),
-              ),
-              _SampleChip(
-                label: 'chai pe 20 kharch kiye',
-                onTap: () => _runGenericVoiceWithText('chai pe 20 kharch kiye'),
-              ),
-              _SampleChip(
-                label: '500 auto rikshaw',
-                onTap: () => _runGenericVoiceWithText('500 auto rikshaw'),
-              ),
-              _SampleChip(
-                label: 'salary 50000 income',
-                onTap: () => _runGenericVoiceWithText('salary 50000 income'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 28),
-
-          // State-driven body
-          if (_genericState == _VoiceState.idle) _buildGenericIdleBody(),
-          if (_genericState == _VoiceState.listening) _buildGenericListeningBody(),
-          if (_genericState == _VoiceState.result) _buildGenericResultBody(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGenericIdleBody() {
-    return Column(
-      children: [
-        const Text(
-          'Tap the microphone and speak naturally in English or Hinglish.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 32),
-        _MicButton(onTap: _startGenericListening),
-        const SizedBox(height: 16),
-      ],
-    );
-  }
-
-  Widget _buildGenericListeningBody() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 24),
-      child: Column(
-        children: [
-          CircularProgressIndicator(color: AppColors.primaryBlue),
-          SizedBox(height: 16),
-          Text(
-            'Listening…',
-            style: TextStyle(
-              color: AppColors.textMuted,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGenericResultBody() {
-    final cmd = _genericParsed;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_genericRecognisedText != null) ...[
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceAccent,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.record_voice_over_rounded,
-                  color: AppColors.primaryBlue,
-                  size: 16,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '"' + (_genericRecognisedText ?? '') + '"',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textDark,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-
-        if (cmd != null) ...[
-          _ParsedPreview(command: cmd),
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: _confirmGenericCommand,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.primaryBlue,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            child: const Text(
-              'Continue to Add Transaction',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-            ),
-          ),
-        ] else ...[
-          const Text(
-            "Couldn't understand that. Please try again.",
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textMuted,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-
-        const SizedBox(height: 8),
-        TextButton(
-          onPressed: () => setState(() {
-            _genericState = _VoiceState.idle;
-            _genericRecognisedText = null;
-            _genericParsed = null;
-          }),
-          child: const Text('Try again'),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _startGenericListening() async {
-    setState(() => _genericState = _VoiceState.listening);
-    final text = await WidgetSyncService.startVoiceInput();
-    if (!mounted) return;
-
-    if (text == null || text.trim().isEmpty) {
-      setState(() => _genericState = _VoiceState.idle);
-      return;
-    }
-
-    _runGenericVoiceWithText(text.trim());
-  }
-
-  Future<void> _runGenericVoiceWithText(String text) async {
-    final accounts = ref.read(accountListProvider).value ?? [];
-    final expenseCats = ref.read(allExpenseCategoriesProvider);
-    final incomeCats = ref.read(allIncomeCategoriesProvider);
-    final subcats = ref.read(categorySubcategoriesProvider);
-
-    final parsed = await _VoiceCommandParser.parse(
-      text,
-      accounts: accounts,
-      expenseCategories: expenseCats,
-      incomeCategories: incomeCats,
-      categorySubcategories: subcats,
-    );
-    setState(() {
-      _genericState = _VoiceState.result;
-      _genericRecognisedText = text;
-      _genericParsed = parsed;
-    });
-  }
-
-  void _confirmGenericCommand() {
-    final cmd = _genericParsed;
-    if (cmd == null || !mounted) return;
-
-    if (widget.returnResult) {
-      Navigator.of(context).pop(cmd);
-      return;
-    }
-
-    Navigator.of(context).pop();
-
-    AppRoutes.pushAddExpense(
-      context,
-      initialAmount: cmd.amount,
-      initialType: cmd.type,
-      initialCategory: cmd.category,
-      initialNote: cmd.note,
-      initialDate: cmd.date,
-      initialSubcategory: cmd.subcategory,
-      initialAccountId: cmd.accountId,
-    );
-  }
 }
 
-// ── Tab Switcher Capsule ───────────────────────────────────────────────────
-
-class _VoiceTabSwitcher extends StatelessWidget {
-  const _VoiceTabSwitcher({
-    required this.currentIndex,
-    required this.onSwitch,
-  });
-
-  final int currentIndex;
-  final ValueChanged<int> onSwitch;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _VoiceTabItem(
-            icon: Icons.auto_awesome_rounded,
-            label: 'AI Copilot',
-            selected: currentIndex == 0,
-            onTap: () => onSwitch(0),
-            accentColor: const Color(0xFF7B2FF7),
-          ),
-          const SizedBox(width: 4),
-          _VoiceTabItem(
-            icon: Icons.bolt_rounded,
-            label: 'Quick Log',
-            selected: currentIndex == 1,
-            onTap: () => onSwitch(1),
-            accentColor: AppColors.primaryBlue,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _VoiceTabItem extends StatelessWidget {
-  const _VoiceTabItem({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    required this.accentColor,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final Color accentColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOutCubic,
-        padding: EdgeInsets.symmetric(
-          horizontal: selected ? 12 : 8,
-          vertical: 6,
-        ),
-        decoration: BoxDecoration(
-          color: selected ? accentColor : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: selected ? Colors.white : AppColors.textMuted,
-              size: 15,
-            ),
-            if (selected) ...[
-              const SizedBox(width: 5),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 11.5,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Sample Prompt Chip ─────────────────────────────────────────────────────
-
-class _SampleChip extends StatelessWidget {
-  const _SampleChip({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ActionChip(
-      onPressed: onTap,
-      label: Text(label),
-      labelStyle: const TextStyle(
-        fontSize: 11.5,
-        fontWeight: FontWeight.w700,
-        color: AppColors.textDark,
-      ),
-      backgroundColor: const Color(0xFFF8FAFC),
-      side: const BorderSide(color: Color(0xFFE2E8F0)),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-    );
-  }
-}
-
-// ── Mic Button ─────────────────────────────────────────────────────────────
-
-class _MicButton extends StatelessWidget {
-  const _MicButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(
-            color: AppColors.primaryBlue,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primaryBlue.withValues(alpha: 0.35),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.mic_rounded,
-            color: Colors.white,
-            size: 32,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Parsed Preview Card ────────────────────────────────────────────────────
-
-class _ParsedPreview extends StatelessWidget {
-  const _ParsedPreview({required this.command});
-
-  final ParsedCommand command;
-
-  @override
-  Widget build(BuildContext context) {
-    final typeLabel = switch (command.type) {
-      TransactionType.income => 'Income',
-      TransactionType.transfer => 'Transfer',
-      _ => 'Expense',
-    };
-    final typeColor = switch (command.type) {
-      TransactionType.income => AppColors.success,
-      TransactionType.transfer => AppColors.primaryBlue,
-      _ => AppColors.danger,
-    };
-
-    final categoryDisplay = command.subcategory != null && command.subcategory!.isNotEmpty
-        ? '${command.category}  ·  ${command.subcategory!}'
-        : command.category;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFDDE4F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: typeColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  typeLabel,
-                  style: TextStyle(
-                    color: typeColor,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  categoryDisplay,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textDark,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
-              Text(
-                '₹' + command.amount.toStringAsFixed(0),
-                style: TextStyle(
-                  color: typeColor,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 20,
-                ),
-              ),
-            ],
-          ),
-          if (command.accountName != null && command.accountName!.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.account_balance_wallet_rounded, size: 13, color: AppColors.textMuted),
-                const SizedBox(width: 5),
-                Text(
-                  'Account: ${command.accountName!}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ],
-          if (command.note.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              command.note,
-              style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-// ── State enum ─────────────────────────────────────────────────────────────
-
-enum _VoiceState { idle, listening, result }
-
-// ── Voice Command Parser ───────────────────────────────────────────────────
-
-class ParsedCommand {
-  const ParsedCommand({
-    required this.amount,
-    required this.type,
-    required this.category,
-    this.note = '',
-    this.date,
-    this.subcategory,
-    this.accountId,
-    this.accountName,
-  });
-
-  final double amount;
-  final TransactionType type;
-  final String category;
-  final String note;
-  final DateTime? date;
-  final String? subcategory;
-  final String? accountId;
-  final String? accountName;
-}
+// ── Smart Parser Engine ─────────────────────────────────────────────────────
 
 abstract final class _VoiceCommandParser {
   static Map<String, dynamic>? _dict;
@@ -1381,25 +1436,33 @@ abstract final class _VoiceCommandParser {
     List<ExpenseCategory>? incomeCategories,
     Map<String, List<String>>? categorySubcategories,
   }) async {
-    final dict = await _loadDict();
     final cleanInput = rawText.trim();
     if (cleanInput.isEmpty) return null;
 
-    // 1. Extract numeric amount
-    final amountRegex = RegExp(r'(\d+(?:[.,]\d{1,2})?)');
-    final amountMatch = amountRegex.firstMatch(cleanInput);
-    if (amountMatch == null) return null;
+    final dict = await _loadDict();
 
-    final amountStr = amountMatch.group(1)!.replaceAll(',', '.');
-    final amount = double.tryParse(amountStr) ?? 0;
-    if (amount <= 0) return null;
+    // 1. Natural Date & Time Extraction using unified DateTimeParser
+    final dateResult = DateTimeParser.parse(cleanInput);
+    final resolvedDate = dateResult.dateTime;
+    final workingText = dateResult.cleanedText;
 
-    final lowerText = cleanInput.toLowerCase();
+    // 2. Extract numeric amount
+    final amountRegex = RegExp(r'(?:₹|rs\.?\s*)?(\d+(?:[.,]\d{1,2})?)', caseSensitive: false);
+    final amountMatch = amountRegex.firstMatch(workingText);
 
-    // 2. Detect TransactionType
+    double amount = 0;
+    String amountStr = '';
+    if (amountMatch != null) {
+      amountStr = amountMatch.group(1)!.replaceAll(',', '.');
+      amount = double.tryParse(amountStr) ?? 0;
+    }
+
+    final lowerText = workingText.toLowerCase();
+
+    // 3. Detect TransactionType
     final type = _detectType(lowerText, dict);
 
-    // 3. Match Accounts dynamically
+    // 4. Match Accounts dynamically
     String? matchedAccountId;
     String? matchedAccountName;
     final consumedTokens = <String>{};
@@ -1447,7 +1510,7 @@ abstract final class _VoiceCommandParser {
       }
     }
 
-    // 4. Match Subcategory & Category dynamically
+    // 5. Match Subcategory & Category dynamically
     String? matchedCategory;
     String? matchedSubcategory;
 
@@ -1487,30 +1550,30 @@ abstract final class _VoiceCommandParser {
     }
 
     if (matchedCategory == null) {
-      matchedCategory = _detectCategory(lowerText, type, dict);
+      matchedCategory = _detectCategoryFromDict(lowerText, type, dict);
     }
 
-    // 5. Extract Note / Title
+    // Default category fallback to 'Uncategorised'
+    matchedCategory ??= 'Uncategorised';
+
+    // 6. Extract Note / Title
     final note = _extractSmartNote(
-      cleanInput,
+      workingText,
       amountStr,
       consumedTokens,
       matchedCategory,
       matchedSubcategory,
     );
 
-    // 6. Detect Date
-    final date = _detectDate(lowerText, dict);
-
     return ParsedCommand(
       amount: amount,
       type: type,
       category: matchedCategory,
       subcategory: matchedSubcategory,
-      accountId: matchedAccountId,
+      accountId: matchedAccountId, // default is null (None)
       accountName: matchedAccountName,
       note: note,
-      date: date,
+      date: resolvedDate ?? DateTime.now(),
     );
   }
 
@@ -1526,7 +1589,7 @@ abstract final class _VoiceCommandParser {
     return TransactionType.expense;
   }
 
-  static String _detectCategory(
+  static String? _detectCategoryFromDict(
     String text,
     TransactionType type,
     Map<String, dynamic> dict,
@@ -1534,8 +1597,7 @@ abstract final class _VoiceCommandParser {
     if (type == TransactionType.transfer) return 'Transfer';
 
     if (type == TransactionType.income) {
-      final incomeCats =
-          dict['income_categories'] as Map<String, dynamic>? ?? {};
+      final incomeCats = dict['income_categories'] as Map<String, dynamic>? ?? {};
       for (final entry in incomeCats.entries) {
         final keywords = (entry.value as List).cast<String>();
         if (_any(text, keywords)) return entry.key;
@@ -1543,18 +1605,16 @@ abstract final class _VoiceCommandParser {
       return 'Salary';
     }
 
-    final expenseCats =
-        dict['expense_categories'] as Map<String, dynamic>? ?? {};
+    final expenseCats = dict['expense_categories'] as Map<String, dynamic>? ?? {};
     for (final entry in expenseCats.entries) {
       final keywords = (entry.value as List).cast<String>();
       if (_any(text, keywords)) return entry.key;
     }
 
-    // Heuristics for common Hindi / Hinglish terms
-    if (text.contains('chai') || text.contains('nashta') || text.contains('khana') || text.contains('food') || text.contains('dinner') || text.contains('lunch')) {
+    if (text.contains('food') || text.contains('dinner') || text.contains('lunch') || text.contains('snack') || text.contains('cafe')) {
       return 'Food & Dining';
     }
-    if (text.contains('auto') || text.contains('cab') || text.contains('petrol') || text.contains('rickshaw') || text.contains('uber') || text.contains('ola')) {
+    if (text.contains('uber') || text.contains('ola') || text.contains('auto') || text.contains('petrol') || text.contains('fuel')) {
       return 'Transportation';
     }
     if (text.contains('rent') || text.contains('kiraya') || text.contains('bijli') || text.contains('bill')) {
@@ -1564,7 +1624,7 @@ abstract final class _VoiceCommandParser {
       return 'Shopping';
     }
 
-    return 'Other';
+    return null;
   }
 
   static String _extractSmartNote(
@@ -1589,8 +1649,7 @@ abstract final class _VoiceCommandParser {
       }
     }
 
-    final cleaned = rawText
-        .replaceAll(amountStr, ' ')
+    final cleaned = (amountStr.isNotEmpty ? rawText.replaceAll(amountStr, ' ') : rawText)
         .replaceAll(RegExp(r'[,.\-_:;!?()]'), ' ');
 
     final words = cleaned
@@ -1612,22 +1671,45 @@ abstract final class _VoiceCommandParser {
     if (matchedSubcategory != null && matchedSubcategory.isNotEmpty) {
       return matchedSubcategory[0].toUpperCase() + matchedSubcategory.substring(1);
     }
-    if (matchedCategory != null && matchedCategory.isNotEmpty && matchedCategory != 'Other') {
+    if (matchedCategory != null && matchedCategory.isNotEmpty && matchedCategory != 'Uncategorised') {
       return matchedCategory;
     }
     return '';
   }
 
-  static DateTime? _detectDate(String text, Map<String, dynamic> dict) {
-    final hints = dict['date_hints'] as Map<String, dynamic>? ?? {};
-    final yesterdayKeys =
-        (hints['yesterday'] as List?)?.cast<String>() ?? const <String>[];
-    if (_any(text, yesterdayKeys) || text.contains('kal')) {
-      return DateTime.now().subtract(const Duration(days: 1));
-    }
-    return null;
-  }
-
   static bool _any(String text, List<String> keywords) =>
       keywords.any((k) => text.contains(k));
+}
+
+// ── Quick Suggestion Chip Widget ───────────────────────────────────────────
+
+class _QuickChip extends StatelessWidget {
+  const _QuickChip({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: ActionChip(
+        label: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF6D28D9),
+          ),
+        ),
+        backgroundColor: const Color(0xFFFAF5FF),
+        side: const BorderSide(color: Color(0xFFE9D5FF), width: 1),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        onPressed: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+      ),
+    );
+  }
 }

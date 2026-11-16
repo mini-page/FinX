@@ -7,6 +7,7 @@ import '../../../../core/theme/app_tokens.dart';
 import '../../../../shared/widgets/app_tab_switcher.dart';
 import '../../../../shared/widgets/app_search_bar.dart';
 import '../../../../shared/widgets/universal_top_bar.dart';
+import '../../../../shared/widgets/app_back_button.dart';
 import '../../../../shared/widgets/app_filter_sheet.dart';
 import 'package:expensio/features/accounts/accounts.dart';
 import '../../data/models/custom_category_model.dart';
@@ -20,13 +21,17 @@ import '../widgets/category_editor_sheet.dart';
 import '../widgets/expense_category.dart';
 import 'categories/budget_popup.dart';
 import 'categories/categories_widgets.dart';
+import 'category_detail_screen.dart';
+import 'package:expensio/features/accounts/presentation/screens/account_detail_screen.dart';
 
 enum _BoardMode { expenses, income, accounts }
 enum _CategorySort { nameAsc, amountDesc }
 enum _CategoryFilter { all, budgetedOnly, overBudgetOnly }
 
 class CategoriesScreen extends ConsumerStatefulWidget {
-  const CategoriesScreen({super.key});
+  const CategoriesScreen({super.key, this.showBackButton});
+
+  final bool? showBackButton;
 
   @override
   ConsumerState<CategoriesScreen> createState() => _CategoriesScreenState();
@@ -188,11 +193,19 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
   }) {
     final monthLabel = DateFormat('MMMM yyyy').format(selectedMonth);
     final topPadding = MediaQuery.of(context).padding.top;
+    final canPop = widget.showBackButton ?? (ModalRoute.of(context)?.canPop ?? false);
 
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
-        color: Colors.white,
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFFEDE9FE), // Soft Lavender
+            Color(0xFFFAF5FF), // Lighter Purple
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
         boxShadow: <BoxShadow>[
           BoxShadow(
             color: AppColors.cardShadow,
@@ -207,60 +220,65 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            // ── Row 1: month navigation + budget summary + search toggle ─
+            // ── Row 1: Back Button + Title + Month Navigator + Search Toggle ──
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
-                _MonthNavButton(
-                  icon: Icons.chevron_left_rounded,
-                  onTap: _goToPreviousMonth,
-                ),
-                const SizedBox(width: AppSpacing.xs),
-                Text(
-                  monthLabel,
-                  style: const TextStyle(
+                if (canPop) ...[
+                  const AppBackButton(),
+                  const SizedBox(width: 12),
+                ],
+                const Text(
+                  'Categories',
+                  style: TextStyle(
                     color: AppColors.textDark,
-                    fontSize: 17,
+                    fontSize: 22,
                     fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
                   ),
-                ),
-                const SizedBox(width: AppSpacing.xs),
-                _MonthNavButton(
-                  icon: Icons.chevron_right_rounded,
-                  onTap: _goToNextMonth,
                 ),
                 const Spacer(),
-                if (totalBudget != null)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Text(
-                        'Budget: ${maskAmount(currency.format(totalBudget), masked: masked)}',
-                        style: const TextStyle(
-                          color: AppColors.textDark,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                        ),
+                // Month Navigation Capsule
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFE9D5FF), width: 1.1),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x0C8B5CF6),
+                        blurRadius: 6,
+                        offset: Offset(0, 2),
                       ),
-                      if (remainingBudget != null) ...<Widget>[
-                        const SizedBox(height: 2),
-                        Text(
-                          remainingBudget >= 0
-                              ? 'Remaining: ${maskAmount(currency.format(remainingBudget), masked: masked)}'
-                              : 'Over by: ${maskAmount(currency.format(remainingBudget.abs()), masked: masked)}',
-                          style: TextStyle(
-                            color: remainingBudget >= 0
-                                ? AppColors.success
-                                : AppColors.danger,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
-                const SizedBox(width: AppSpacing.xs),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _MonthNavButton(
+                        icon: Icons.chevron_left_rounded,
+                        onTap: _goToPreviousMonth,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Text(
+                          monthLabel,
+                          style: const TextStyle(
+                            color: AppColors.textDark,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      _MonthNavButton(
+                        icon: Icons.chevron_right_rounded,
+                        onTap: _goToNextMonth,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
                 _MonthNavButton(
                   icon: _isSearchOpen
                       ? Icons.close_rounded
@@ -277,6 +295,45 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
                 ),
               ],
             ),
+            if (totalBudget != null) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE9D5FF), width: 0.8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Budget: ${maskAmount(currency.format(totalBudget), masked: masked)}',
+                      style: const TextStyle(
+                        color: AppColors.textDark,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (remainingBudget != null) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        remainingBudget >= 0
+                            ? '•  Remaining: ${maskAmount(currency.format(remainingBudget), masked: masked)}'
+                            : '•  Over by: ${maskAmount(currency.format(remainingBudget.abs()), masked: masked)}',
+                        style: TextStyle(
+                          color: remainingBudget >= 0
+                              ? AppColors.success
+                              : AppColors.danger,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
 
             // ── Expandable Search Bar with Fade Transition & Embedded Icon Capsule ──
             AnimatedSize(
@@ -742,17 +799,17 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
                 monthTotal: stats.monthTotal,
                 enabled: isEnabled,
               ),
-              onTap: isCustom && customModel != null
-                  ? () => _openCustomCategoryEditor(
-                        customModel,
-                        TransactionType.expense,
-                        budget,
-                      )
-                  : () => _openBuiltInCategoryEditor(
-                        category,
-                        budget,
-                        TransactionType.expense,
-                      ),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => CategoryDetailScreen(
+                      categoryName: category.name,
+                      type: TransactionType.expense,
+                      customModel: customModel,
+                    ),
+                  ),
+                );
+              },
               onToggle: (value) =>
                   _setExpenseCategoryEnabled(category.name, value),
               subcategories: subcategoriesMap[category.name] ?? const <String>[],
@@ -763,7 +820,6 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
         return allIncomeCategories.map(
           (category) {
             final amount = stats.incomeCategoryTotals[category.name] ?? 0;
-            final budget = budgets[category.name] ?? 0;
             final isEnabled = !disabledIncomeCategories.contains(category.name);
             final isCustom = !builtInIncomeNames.contains(category.name);
             final customModel = isCustom
@@ -787,17 +843,17 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
                 monthTotal: stats.monthIncomeTotal,
                 enabled: isEnabled,
               ),
-              onTap: isCustom && customModel != null
-                  ? () => _openCustomCategoryEditor(
-                        customModel,
-                        TransactionType.income,
-                        budget,
-                      )
-                  : () => _openBuiltInCategoryEditor(
-                        category,
-                        budget,
-                        TransactionType.income,
-                      ),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => CategoryDetailScreen(
+                      categoryName: category.name,
+                      type: TransactionType.income,
+                      customModel: customModel,
+                    ),
+                  ),
+                );
+              },
               onToggle: (value) =>
                   _setIncomeCategoryEnabled(category.name, value),
               subcategories: subcategoriesMap[category.name] ?? const <String>[],
@@ -830,7 +886,15 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
                 totalAbsoluteBalance: totalAbsoluteBalance,
                 enabled: isEnabled,
               ),
-              onTap: () => _openAccountEditor(account: account),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AccountDetailScreen(
+                      accountId: account.id,
+                    ),
+                  ),
+                );
+              },
               onToggle: (value) => _setAccountEnabled(account.id, value),
             );
           },
@@ -1100,13 +1164,24 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
     );
     if (result == null || !mounted) return;
 
+    final controller = ref.read(appPreferencesControllerProvider);
+
+    if (result.isDelete) {
+      if (type == TransactionType.expense) {
+        await controller.deleteBuiltInExpenseCategory(category.name);
+      } else {
+        await controller.deleteBuiltInIncomeCategory(category.name);
+      }
+      if (!mounted) return;
+      _showFeedback('${category.name} deleted.');
+      return;
+    }
+
     final override = BuiltInCategoryOverride(
       name: category.name,
       iconKey: result.iconKey,
       colorHex: result.colorHex,
     );
-
-    final controller = ref.read(appPreferencesControllerProvider);
     if (type == TransactionType.expense) {
       await controller.saveBuiltInExpenseCategoryOverride(override);
     } else {
@@ -1126,7 +1201,14 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
 
   Future<void> _openAccountEditor({AccountModel? account}) async {
     final result = await showAccountEditorSheet(context, account: account);
-    if (result == null) {
+    if (result == null || !mounted) {
+      return;
+    }
+
+    if (result.isDelete && result.id != null) {
+      await ref.read(accountControllerProvider).deleteAccount(result.id!);
+      if (!mounted) return;
+      _showFeedback('${result.name} deleted.');
       return;
     }
 

@@ -583,3 +583,120 @@ All AI agents working on this repository **must** follow these rules:
 - New backup file extension: `.Expensio` (was `.Expensioa`).
 
 ---
+
+### Update: Omni Box, Records Multi-Select, Responsive Settings, Themed Category Sheet & Split Bill Redesign
+- **Omni Box & Add Expense Refinements (1000040650.png, 1000040664.png, 1000040665.png):**
+  - Integrated Date & Time pill inside top card row between currency and calculator.
+  - Formatted note row with ≡ Note label and 📎 attachment button on the far right.
+  - Streamlined pills row below card: (@ Account), (/ Category), Split, Location, Scan, and persistent [🎙] Voice button on the far right.
+  - Implemented Split Save Button with secondary menu: [⊕ Save and add another] (saves expense, clears inputs, keeps form open for rapid entry) and [🔖 Save as Template].
+  - Removed deprecated tag pills and standalone tag screens while keeping #hashtag parsing in note text for lightweight categorization.
+- **Records Screen & Multi-Select Overhaul (1000040644.png):**
+  - Removed chevron expansion arrows from TransactionCard. Single tap now opens TransactionDetailsSheet featuring complete transaction metadata, account info, note, hashtags badges, and quick actions (Edit, Delete, Share).
+  - Added Long-Press Multi-Select mode with custom checkmark circle indicators ([✔] vs [○]), top selection counter bar ([N Selected]), and floating bottom action bar ([Share] | [Delete]).
+- **Responsive Settings Tiles (1000040648.png, 1000040649.png):**
+  - Built ResponsiveSettingsTile with adaptive LayoutBuilder across settings screens. Displays trailing actions inline when horizontal width allows, or flows them cleanly to the next row aligned to the right when tight.
+- **Themed Category Selection Sheet (1000040658.png):**
+  - Implemented CategorySelectionSheet supporting both light and dark themes. Displays categories as cards with subcategory chips row and [+ Add] button.
+- **Split Bill Redesign (2 Sections: Manage & Payments):**
+  - Direct offline-first access without contact permission prompts. Users can optionally import phone contacts or add friends manually.
+  - Two dedicated sections: Manage (groups, split partners, amount split calculator with Equal/Exact modes) and Payments (who owes whom, per-person net balances, settlement suggestions with one-tap recording, and debt settlement history).
+- **Navbar Duplicate Header Fix (1000040659.png, 1000040660.png, 1000040661.png):**
+  - Removed redundant AppBar headers on Subscriptions, Split Bill, and Goals screens when embedded in bottom navigation tabs.
+- **Release Verification & Deployment:**
+  - lutter analyze: 0 errors.
+  - Built release APK (pp-release.apk, 38.5MB) for ndroid-arm64 and deployed via ADB to connected device (100.76.114.166:5555).
+
+### Update: FinX Workflow Automation Suite (fx CLI) (2026-11-04 13:12)
+- Built unified fx CLI automating 90 percent of development tasks
+- Integrated modern CLI tools: fd, ripgrep (rg), bat, eza, zoxide
+- Smart analyze command to isolate 0 compiler errors
+- One-step build and deploy with auto ADB reconnection
+- Flawless screencap pulling preventing UTF-16 corruption
+- Safe CRLF-agnostic code patcher
+
+### Update: Universal Header Styling & Expensio AI Voice Assistant Merger (2026-11-04 23:36)
+- Unified Top Bars: Standardized GradientAppBar and UniversalTopBar typography (22sp bold), lavender-pink gradients, AppBackButton, and auto-hidden back buttons on navbar tabs
+- Fixed Duplicate Headers: Eliminated double-title headers on Subscriptions, Goals, and Split Bill screens with showHeader toggles
+- Natural DateTimeParser: Added core/utils/date_time_parser.dart parsing relative days, weekdays, explicit calendar dates, and 12/24hr times
+- Unified AI Assistant: Merged generic voice and AI copilot into single Expensio AI Assistant with cloud Gemini/offline smart NLP fallback
+- Goal Commands & Interactive Clarifications: Added natural goal contribution/creation and interactive missing amount questions
+- OmniBox Fallbacks: Configured Uncategorised category and null account defaults with integrated date/time parsing
+
+### Update: Settings Alignment, Navbar Architecture, Bottom Sheets & History Overhaul (2026-11-05 15:00)
+- **Settings Right-Aligned Controls:** Fixed chevrons and trailing controls in `ResponsiveSettingsTile` to remain strictly inline on the same row on the right side.
+- **Quick Add (+) FAB Gestures:** Moved entire tap/double-tap/long-press gesture settings section to `GeneralSettingsScreen` under Appearance.
+- **Navbar Architecture Rules:** Enforced Rule 1 (Home locked at index 0, non-removable/reorderable), Rule 2 (Tools non-removable, reorderable), and Rule 3 (minimum 3 tabs, unlimited maximum tool slots) across both navigation settings and navbar bottom sheet.
+- **Fluid Tab Transitions:** Implemented smooth animated transitions (`AnimatedSwitcher` with subtle slide and fade) in `AppShell` tab switching inspired by `UnifiedScannerScreen`.
+- **Keyboard Clamping & Boundary Containment for Bottom Sheets:** Clamped `maxHeight` dynamically against keyboard `viewInsets.bottom` and `padding.top` across `CurrencySelectorSheet`, `AppBottomSheetContainer`, and filter sheets to prevent layout overflows. Eliminated duplicate close buttons.
+- **Universal Search Dismiss Icon:** Standardized search clear/dismiss icon to `Icons.search_off_rounded` across `AppSearchBar`, `UniversalTopBar`, and selector sheets.
+- **Unified "History" Screen:** Universally renamed screen to History; removed redundant account/category pill row; added compact horizontal filter pills (`All Time`, `Uncategorised`, `No Account`, `Expense`, `Income`, `Transfer`, `Cash Only`, `High (>₹1k)`, `Today`, `This Week`, `This Month`, `Custom...`); made large net summary card dynamic (hidden by default, appears only when filtered/searching/selecting); added 3-way toggle switch for `[ List | Calendar | Timeline ]`.
+- **AI Voice Sheet Bottom Padding:** Enhanced bottom safe-area insets in `VoiceEntryScreen` for keyboard and system navigation bars.
+- **Location Diagnostic & Simulation:** Diagnosed hardware GPS unavailability on wireless ADB test devices and implemented an offline simulated GPS mode with synthetic coordinates for Radar Sonar verification.
+
+### Update: Feature Simplification & Tool Hub Optimization (2026-11-12 13:25)
+- **Eliminated Duplicate Navbar Tab:** Removed duplicate `accounts` tab routing in `app_shell.dart` and sanitized `navbarTabsProvider` so the bottom navbar shows the clean default 5 tabs (Home, Charts, Category, Tools, Settings).
+- **Location Completely Purged:** Removed Location pill from OmniBox in `add_expense_screen.dart`, removed `Map` tool item from `accounts_screen.dart`, removed GPS location tile from `permissions_settings_screen.dart`, and removed location permissions from `AndroidManifest.xml`.
+- **Unified Scanner Consolidation:** Merged standalone `UPI Pay` into the `Scan` tool icon which launches `UnifiedScannerScreen` (handling UPI, receipts, barcodes, and products seamlessly).
+- **History & Calendar Merger:** Removed standalone `Calendar` tool icon from Finance Tools. The unified `History` screen features a 3-way toggle (`[ List | Calendar | Timeline ]`), dynamic compact net summary bar, small quick filter pills, and universal search clear icon.
+- **Budgeting Tool Removed:** Removed obsolete `Budgeting` hub item from Finance Tools and navigation tab catalog.
+- **Accounts Hub Integration:** Added `Accounts` item to Finance Tools grid pointing directly to `AccountsBoardScreen` for managing bank and cash balances.
+- **Quality Assurance:** `fx analyze` passed with 0 compile errors; all 77 unit tests passed.
+
+
+### Update: End-to-End Connectivity, Split Bill, Savings Goals Ledger & UX Hardening (2026-11-16 18:50)
+- **Statusline Error Fix:** Fixed node executable path in `settings.json` and added robust error handling, timeout guards, and fallback rendering in `gsd-statusline.js` exiting with 0.
+- **Split Bill Core & Directional Fixes:**
+  - Resolved `_applySplit` recording: Personal expense ledger records only the user's personal share (`myShare`), preventing double-counting total group expenditure.
+  - Settle Suggestions: `settleSuggestion()` marks existing debtor/creditor debts as settled instead of creating redundant debt records.
+  - Directional Label Bug: Eliminated the `You → You` display defect in `_SettlementTile` by binding exact `fromParticipantName → toParticipantName`.
+  - Zero Balance Accuracy: Shows `"All settled up"` when net balance is zero instead of misstating participant owes money.
+  - Connected OmniBox voice & text token parser (`+tokens`) to `SettlementModel`.
+- **Savings Goals Ledger Integration:**
+  - Connected goal deposits directly to real account deductions with account picker and deduction checkbox in `_addToGoal`.
+  - Automatically logs a real expense transaction under category `'Savings'` and deducts from user's balance. Verified live on device ("Deposit to mobile -₹25").
+  - Added achievement celebration dialog on reaching goal target.
+- **Recurring Subscriptions Account Deduction:**
+  - Preserved `sub.category` and deducted payments from target account in `_logSubscriptionPayment`.
+- **Location & Dead Code Total Elimination:**
+  - Completely purged `location_map_screen.dart` and `budgeting_hub_screen.dart` from the repository.
+  - Removed remaining `geolocator` calls, unused location state in `permissions_settings_screen.dart`, and location fields from `add_expense_screen.dart`.
+  - Cleaned up obsolete `'budget'` and `'radar'` FAB actions in `app_shell.dart`.
+- **History & Calendar Navigation:**
+  - Hid duplicate nested pill switch when Calendar is embedded in History so the top 3-way toggle controls view mode cleanly.
+  - Eliminated redundant search toggle button in `UniversalTopBar` when `alwaysShowSearch == true`.
+- **Currency Selector Sheet:**
+  - Corrected closing token syntax in `currency_selector_sheet.dart`.
+- **Verification & Deployment:**
+  - `dart analyze` & `flutter analyze`: 0 errors.
+  - All 77 unit tests passed.
+  - Built optimized arm64 debug APK and installed/verified live on attached device (`0J635131252073BD`).
+
+### Update: Contacts Removal, Universal Category/Account Management, Dedicated Detail Pages & History UI/UX Overhaul (2026-11-16 23:00)
+- **Contacts Permission & Fetching Total Elimination:**
+  - Completely purged `Permission.contacts.request()`, `_requestContactPermission()`, `_buildPermissionScreen()`, and `_mockPhoneContacts` from `split_bill_tool_view.dart`.
+  - Replaced contact picker with simple, offline, manual splitter creation: users can type any name, persisting immediately to Hive via `participantListProvider`.
+  - Horizontal split partner avatars are interactive: tapping any splitter opens their dedicated profile screen (`SplitterProfileScreen`).
+  - Built `SplitterProfileScreen` featuring net balance hero card ("All settled up" or debtor/creditor breakdown), quick Settle Up All, shared splits records, and settlement history.
+- **Removed Duplicate Accounts Tool:**
+  - Removed `Accounts` item from the Finance Tools grid in `accounts_screen.dart`, since accounts are directly managed in the Categories screen's Account tab.
+- **Universal Category & Account Management (Including Prebuilt/Built-ins):**
+  - Added `deletedExpenseCategoriesJson` and `deletedIncomeCategoriesJson` to `AppPreferencesModel` and `AppPreferencesModelAdapter`.
+  - Updated `allExpenseCategoriesProvider` and `allIncomeCategoriesProvider` in `preferences_providers.dart` to automatically filter out deleted categories.
+  - Added `deleteBuiltInExpenseCategory`, `deleteBuiltInIncomeCategory`, and unified `deleteCategory` controller methods in `AppPreferencesController`.
+  - Enabled the Delete button in `category_editor_sheet.dart` for all categories (including built-ins).
+  - Added `isDelete` flag and Delete confirmation dialog in `account_editor_sheet.dart`.
+  - Wired category deletion and account deletion handlers in `categories_screen.dart`.
+- **Dedicated Category & Account Detail Pages:**
+  - Built `CategoryDetailScreen` (`lib/features/categories/presentation/screens/category_detail_screen.dart`): shows category icon, name, monthly & all-time totals, monthly budget bar with set/edit dialog, subcategory chip manager (+/- tags), edit/delete actions, and filtered transaction list.
+  - Built `AccountDetailScreen` (`lib/features/accounts/presentation/screens/account_detail_screen.dart`): shows account icon, name, balance hero card with total inflows and outflows, edit/delete actions, and all transactions associated with the account.
+  - In `categories_screen.dart`, tapping any expense/income card navigates to `CategoryDetailScreen`, and tapping any account card navigates to `AccountDetailScreen`.
+- **History Screen UI/UX Overhaul:**
+  - Eliminated the bulky full-width view switcher box and oversized `Filtered Net` card in `records_history_screen.dart`.
+  - Integrated a sleek, compact segmented mode pill switch (`_HistoryModePillSwitch`) aligned with an inline transaction count & net badge.
+  - Replaced the messy row of 12 horizontal pills with 5 clean high-impact chips: `All`, `Expense`, `Income`, `Transfer`, `This Month`, plus a dynamic `More Filters` trigger chip that opens an advanced filter bottom sheet.
+  - Removed dead code `_buildViewSwitcher` and `_buildViewTabItem`.
+- **Quality Assurance & Verification:**
+  - `dart analyze`: **0 errors**.
+  - `flutter test`: **All 77 unit tests passed**.
+  - Built arm64 debug APK (`build\app\outputs\flutter-apk\app-debug.apk`) successfully.

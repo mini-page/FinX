@@ -13,11 +13,14 @@ import '../../domain/common_services_catalog.dart';
 import '../provider/recurring_subscription_providers.dart';
 import 'subscription_editor_sheet.dart';
 import 'subscription_icons.dart';
+import 'package:expensio/features/accounts/accounts.dart';
 import 'package:expensio/features/expense/presentation/widgets/ui_feedback.dart';
 import 'package:expensio/features/expense/presentation/provider/expense_providers.dart';
 
 class RecurringToolView extends ConsumerStatefulWidget {
-  const RecurringToolView({super.key});
+  const RecurringToolView({super.key, this.showHeader = true});
+
+  final bool showHeader;
 
   @override
   ConsumerState<RecurringToolView> createState() => _RecurringToolViewState();
@@ -95,48 +98,79 @@ class _RecurringToolViewState extends ConsumerState<RecurringToolView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Premium Header
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Subscriptions & Bills',
-                    style: TextStyle(
-                      color: AppColors.textDark,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
+        if (widget.showHeader) ...[
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Subscriptions & Bills',
+                      style: TextStyle(
+                        color: AppColors.textDark,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$activeCount active • ${currency.format(totalMonthlyAmount)}/mo',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                    const SizedBox(height: 2),
+                    Text(
+                      '$activeCount active • ${currency.format(totalMonthlyAmount)}/mo',
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
+                  ],
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _openEditor(context),
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('Add'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppColors.primaryBlue,
+                  elevation: 0,
+                  side: const BorderSide(color: Color(0xFFE2E8F0)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ] else ...[
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '$activeCount active • ${currency.format(totalMonthlyAmount)}/mo',
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                   ),
-                ],
+                ),
               ),
-            ),
-            ElevatedButton.icon(
-              onPressed: () => _openEditor(context),
-              icon: const Icon(Icons.add_rounded, size: 16),
-              label: const Text('Add'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: AppColors.primaryBlue,
-                elevation: 0,
-                side: const BorderSide(color: Color(0xFFE2E8F0)),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ElevatedButton.icon(
+                onPressed: () => _openEditor(context),
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('Add'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppColors.primaryBlue,
+                  elevation: 0,
+                  side: const BorderSide(color: Color(0xFFE2E8F0)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
 
         // ── 50+ Common Services Quick-Add Picker (2 Horizontal Scrollable Rows) ──
         _buildCommonServicesPicker(currency),
@@ -1094,13 +1128,20 @@ Future<void> _logSubscriptionPayment(
 ) async {
   HapticFeedback.mediumImpact();
   final now = DateTime.now();
-  
-  // 1. Add real expense transaction
+
+  final accounts = ref.read(accountListProvider).value ?? [];
+  final defaultAccountId = ref.read(appPreferencesProvider).value?.smsDefaultAccountId;
+  final targetAccountId = (defaultAccountId != null && accounts.any((a) => a.id == defaultAccountId))
+      ? defaultAccountId
+      : (accounts.isNotEmpty ? accounts.first.id : null);
+
+  // 1. Add real expense transaction with preserved category and deduction from account
   await ref.read(expenseControllerProvider).addExpense(
         amount: sub.amount,
-        category: 'Bills',
+        category: sub.category.isNotEmpty ? sub.category : 'Bills',
         date: now,
         note: '${sub.name} Subscription Payment',
+        accountId: targetAccountId,
       );
 
   // 2. Advance the next bill date

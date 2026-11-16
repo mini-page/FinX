@@ -1,9 +1,11 @@
+import 'package:flutter/services.dart';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import 'calendar_view_screen.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_tokens.dart';
@@ -27,6 +29,22 @@ import 'records_history/records_search_logic.dart';
 export 'records_history/records_filter.dart';
 export 'records_history/records_search_logic.dart';
 
+
+enum HistoryQuickFilter {
+  all,
+  uncategorized,
+  noAccount,
+  expense,
+  income,
+  transfer,
+  cash,
+  highAmount,
+  today,
+  thisWeek,
+  thisMonth,
+  custom,
+}
+
 enum _SortOrder { newest, oldest, amountDesc, amountAsc }
 
 class RecordsHistoryScreen extends ConsumerStatefulWidget {
@@ -34,15 +52,12 @@ class RecordsHistoryScreen extends ConsumerStatefulWidget {
     super.key,
     this.initialTagFilter,
     this.autoFocusSearch = false,
+    this.initialViewMode = 'List',
   });
 
   final String? initialTagFilter;
-
-  /// When `true`, the search bar is automatically focused on mount and the
-  /// soft keyboard is raised — replicating the old TransactionSearchScreen
-  /// entry point. When `false` (default), the screen opens as the normal
-  /// records browser.
   final bool autoFocusSearch;
+  final String initialViewMode;
 
   @override
   ConsumerState<RecordsHistoryScreen> createState() =>
@@ -53,6 +68,8 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
   static const String _allAccountsKey = '__all_accounts__';
 
   RecordsFilter _selectedFilter = RecordsFilter.all;
+  HistoryQuickFilter _quickFilter = HistoryQuickFilter.all;
+  String _selectedViewMode = 'List'; // 'List', 'Calendar', 'Timeline'
   String _selectedAccountFilter = _allAccountsKey;
   Set<String> _selectedCategoryFilters = {};
   String _tagFilter = '';
@@ -63,10 +80,93 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
   late final TextEditingController _searchController;
   late final FocusNode _searchFocusNode;
   String _searchQuery = '';
+  bool _isSelectionMode = false;
+  final Set<String> _selectedExpenseIds = {};
+
+  void _onToggleSelectExpense(ExpenseModel expense) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_selectedExpenseIds.contains(expense.id)) {
+        _selectedExpenseIds.remove(expense.id);
+        if (_selectedExpenseIds.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedExpenseIds.add(expense.id);
+      }
+    });
+  }
+
+  void _onExpenseLongPress(ExpenseModel expense) {
+    HapticFeedback.heavyImpact();
+    setState(() {
+      _isSelectionMode = true;
+      _selectedExpenseIds.add(expense.id);
+    });
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _isSelectionMode = false;
+      _selectedExpenseIds.clear();
+    });
+  }
+
+  Future<void> _bulkDeleteSelected(BuildContext context) async {
+    HapticFeedback.mediumImpact();
+    final count = _selectedExpenseIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete $count Transactions?'),
+        content: const Text(
+          'This will permanently delete the selected transactions and update your account balances.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final controller = ref.read(expenseControllerProvider);
+      for (final id in _selectedExpenseIds) {
+        await controller.deleteExpense(id);
+      }
+      _exitSelectionMode();
+    }
+  }
+
+  void _bulkShareSelected(List<ExpenseModel> allExpenses, NumberFormat currency) {
+    HapticFeedback.lightImpact();
+    final selected = allExpenses.where((e) => _selectedExpenseIds.contains(e.id)).toList();
+    if (selected.isEmpty) return;
+
+    final buffer = StringBuffer();
+    buffer.writeln('📋 Expensio Transaction Summary (${selected.length} items):\n');
+    double total = 0;
+    for (final exp in selected) {
+      final sign = exp.isIncome ? '+' : '-';
+      buffer.writeln('• ${DateFormat('d MMM, h:mm a').format(exp.date)}: $sign${currency.format(exp.amount)} (${exp.category}) ${exp.note}');
+      total += exp.signedAmount;
+    }
+    buffer.writeln('\nTotal Net: ${currency.format(total)}');
+    SharePlus.instance.share(ShareParams(text: buffer.toString()));
+  }
+
 
   @override
   void initState() {
     super.initState();
+    _selectedViewMode = widget.initialViewMode;
     _searchController = TextEditingController();
     _searchFocusNode = FocusNode();
     if (widget.initialTagFilter != null) {
@@ -136,153 +236,305 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
       (sum, expense) => sum + expense.signedAmount,
     );
 
-    return UniversalScreenScaffold(
-      topBar: UniversalTopBar(
-        title: widget.autoFocusSearch ? 'Search' : 'Records',
-        isSearchOpen: _isSearchOpen,
-        onSearchToggle: (open) {
-          setState(() {
-            _isSearchOpen = open;
-            if (!open) {
-              _searchQuery = '';
-              _searchController.clear();
-            }
-          });
-        },
-        alwaysShowSearch: true,
-        searchController: _searchController,
-        searchHint: widget.autoFocusSearch
-            ? 'e.g. coffee OR food, NOT rent…'
-            : 'Search records…',
-        onSearchChanged: (value) => setState(() => _searchQuery = value),
-        onSearchClear: () {
-          _searchController.clear();
-          setState(() => _searchQuery = '');
-        },
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.download_rounded, color: AppColors.textDark),
-            tooltip: 'Export CSV',
-            onPressed: () =>
-                _exportCsv(context, filteredExpenses, locale, currencySymbol),
-          ),
-        ],
-        filterLabel: _selectedCategoryFilters.isNotEmpty
-            ? '${_selectedCategoryFilters.length} Cats'
-            : (_selectedAccountFilter != _allAccountsKey ? 'Account' : 'Filter'),
-        isFilterActive: _selectedCategoryFilters.isNotEmpty ||
-            _selectedAccountFilter != _allAccountsKey,
-        onFilterTap: () => _showCategorySheet(context, allCategories),
-        sortLabel: _sortOrderLabel(_sortOrder),
-        sortIcon: _sortOrderIcon(_sortOrder),
-        onSortTap: () => _showSortSheet(context),
-      ),
+    return Stack(
+      children: [
+        UniversalScreenScaffold(
+      topBar: _isSelectionMode
+          ? UniversalTopBar(
+              title: '${_selectedExpenseIds.length} Selected',
+              showBackButton: true,
+              onBackPressed: _exitSelectionMode,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, color: AppColors.textDark),
+                  onPressed: _exitSelectionMode,
+                ),
+              ],
+            )
+          : UniversalTopBar(
+              title: _isSelectionMode ? '${_selectedExpenseIds.length} Selected' : 'History',
+              isSearchOpen: _isSearchOpen,
+              onSearchToggle: (open) {
+                setState(() {
+                  _isSearchOpen = open;
+                  if (!open) {
+                    _searchQuery = '';
+                    _searchController.clear();
+                  }
+                });
+              },
+              alwaysShowSearch: true,
+              searchController: _searchController,
+              searchHint: widget.autoFocusSearch
+                  ? 'Search history…'
+                  : 'Search history…',
+              onSearchChanged: (value) => setState(() => _searchQuery = value),
+              onSearchClear: () {
+                _searchController.clear();
+                setState(() => _searchQuery = '');
+              },
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.download_rounded, color: AppColors.textDark),
+                  tooltip: 'Export CSV',
+                  onPressed: () =>
+                      _exportCsv(context, filteredExpenses, locale, currencySymbol),
+                ),
+              ],
+              filterLabel: _selectedCategoryFilters.isNotEmpty
+                  ? '${_selectedCategoryFilters.length} Cats'
+                  : (_selectedAccountFilter != _allAccountsKey ? 'Account' : 'Filter'),
+              isFilterActive: _selectedCategoryFilters.isNotEmpty ||
+                  _selectedAccountFilter != _allAccountsKey,
+              onFilterTap: () => _showCategorySheet(context, allCategories),
+              sortLabel: _sortOrderLabel(_sortOrder),
+              sortIcon: _sortOrderIcon(_sortOrder),
+              onSortTap: () => _showSortSheet(context),
+            ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            // ── Summary card ─────────────────────────────────────────────────
-            RecordsSummaryCard(
-              filteredTotal: filteredTotal,
-              transactionCount: filteredExpenses.length,
-              currency: currency,
-              privacyModeEnabled: privacyModeEnabled,
-            ),
-            const SizedBox(height: 14),
-            // ── Date / type filter chips ──────────────────────────────────────
-            RecordsFilterChips(
-              selectedFilter: _selectedFilter,
-              onFilterSelected: (filter) {
-                setState(() {
-                  _selectedFilter = filter;
-                  if (filter != RecordsFilter.custom) {
-                    _customDateRange = null;
-                  }
-                });
-              },
-              labelForFilter: _labelForFilter,
-              onCustomDateRange: () => _pickCustomDateRange(context),
-              customDateRange: _customDateRange,
-            ),
-            const SizedBox(height: 10),
-            // ── Account + Category + Tag row ─────────────────────────────────
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _FilterPill(
-                    icon: Icons.account_balance_wallet_outlined,
-                    label: _accountFilterLabel(accountMap),
-                    isActive: _selectedAccountFilter != _allAccountsKey,
-                    onTap: () => _showAccountSheet(context, accounts),
+            // ── Mode Switcher & Inline Net Badge ──
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _HistoryModePillSwitch(
+                  selectedView: _selectedViewMode,
+                  onChanged: (view) {
+                    HapticFeedback.selectionClick();
+                    setState(() => _selectedViewMode = view);
+                  },
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  const SizedBox(width: 10),
-                  _FilterPill(
-                    icon: Icons.category_outlined,
-                    label: _selectedCategoryFilters.isEmpty
-                        ? 'Category'
-                        : _selectedCategoryFilters.length == 1
-                            ? _selectedCategoryFilters.first
-                            : '${_selectedCategoryFilters.length} categories',
-                    isActive: _selectedCategoryFilters.isNotEmpty,
-                    onTap: () => _showCategorySheet(context, allCategories),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${filteredExpenses.length} txns',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        '•  ${filteredTotal >= 0 ? '+' : ''}${currency.format(filteredTotal)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                          color: AppColors.primaryBlue,
+                        ),
+                      ),
+                    ],
                   ),
-                  if (_tagFilter.isNotEmpty) ...[
-                    const SizedBox(width: 10),
-                    InputChip(
-                      label: Text('#$_tagFilter'),
-                      deleteIcon: const Icon(Icons.close, size: 16),
-                      onDeleted: () => setState(() => _tagFilter = ''),
-                      selected: true,
-                      backgroundColor:
-                          AppColors.primaryBlue.withValues(alpha: 0.1),
-                      labelStyle: const TextStyle(
-                        color: AppColors.primaryBlue,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppRadii.pill),
-                      ),
-                      side: BorderSide(
-                        color: AppColors.primaryBlue.withValues(alpha: 0.24),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (_selectedViewMode == 'Calendar')
+              const Expanded(
+                child: CalendarViewScreen(showHeader: false, initialView: 'Calendar'),
+              )
+            else if (_selectedViewMode == 'Timeline')
+              const Expanded(
+                child: CalendarViewScreen(showHeader: false, initialView: 'Timeline'),
+              )
+            else ...[
+              // ── Sleek Clean Quick Filters ──
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildQuickFilterPill('All', HistoryQuickFilter.all),
+                    const SizedBox(width: 8),
+                    _buildQuickFilterPill('Expense', HistoryQuickFilter.expense),
+                    const SizedBox(width: 8),
+                    _buildQuickFilterPill('Income', HistoryQuickFilter.income),
+                    const SizedBox(width: 8),
+                    _buildQuickFilterPill('Transfer', HistoryQuickFilter.transfer),
+                    const SizedBox(width: 8),
+                    _buildQuickFilterPill('This Month', HistoryQuickFilter.thisMonth),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () => _openAdvancedFilterSheet(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: (_quickFilter != HistoryQuickFilter.all &&
+                                  _quickFilter != HistoryQuickFilter.expense &&
+                                  _quickFilter != HistoryQuickFilter.income &&
+                                  _quickFilter != HistoryQuickFilter.transfer &&
+                                  _quickFilter != HistoryQuickFilter.thisMonth)
+                              ? AppColors.primaryBlue.withValues(alpha: 0.12)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: (_quickFilter != HistoryQuickFilter.all &&
+                                    _quickFilter != HistoryQuickFilter.expense &&
+                                    _quickFilter != HistoryQuickFilter.income &&
+                                    _quickFilter != HistoryQuickFilter.transfer &&
+                                    _quickFilter != HistoryQuickFilter.thisMonth)
+                                ? AppColors.primaryBlue
+                                : const Color(0xFFE2E8F0),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.tune_rounded,
+                              size: 14,
+                              color: (_quickFilter != HistoryQuickFilter.all &&
+                                      _quickFilter != HistoryQuickFilter.expense &&
+                                      _quickFilter != HistoryQuickFilter.income &&
+                                      _quickFilter != HistoryQuickFilter.transfer &&
+                                      _quickFilter != HistoryQuickFilter.thisMonth)
+                                  ? AppColors.primaryBlue
+                                  : AppColors.textMuted,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              (_quickFilter != HistoryQuickFilter.all &&
+                                      _quickFilter != HistoryQuickFilter.expense &&
+                                      _quickFilter != HistoryQuickFilter.income &&
+                                      _quickFilter != HistoryQuickFilter.transfer &&
+                                      _quickFilter != HistoryQuickFilter.thisMonth)
+                                  ? _quickFilterLabel(_quickFilter)
+                                  : 'More Filters',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: (_quickFilter != HistoryQuickFilter.all &&
+                                        _quickFilter != HistoryQuickFilter.expense &&
+                                        _quickFilter != HistoryQuickFilter.income &&
+                                        _quickFilter != HistoryQuickFilter.transfer &&
+                                        _quickFilter != HistoryQuickFilter.thisMonth)
+                                    ? AppColors.primaryBlue
+                                    : AppColors.textDark,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
-                ],
+                ),
               ),
-            ),
-            const SizedBox(height: 14),
-            // ── Transaction list ─────────────────────────────────────────────
-            Expanded(
-              child: expenseState.hasError
-                  ? const RecordsStateCard(
-                      title: 'Unable to load records',
-                      message:
-                          'The transaction history is not available right now.',
-                    )
-                  : expenseState.isLoading && expenses.isEmpty
-                      ? const Center(child: CircularProgressIndicator())
-                      : filteredExpenses.isEmpty
-                          ? _buildEmptyState()
-                          : RecordsExpenseList(
-                              groupedExpenses: groupedExpenses,
-                              accounts: accounts,
-                              privacyModeEnabled: privacyModeEnabled,
-                              groupLabel: _groupLabel,
-                              accountLabelFor: _accountLabelFor,
-                              onEdit: (expense) =>
-                                  _openEditExpenseScreen(context, expense),
-                              onDelete: (expense) => _confirmDeleteExpense(
-                                  context, ref, expense),
-                            ),
-            ),
+              if (_tagFilter.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                InputChip(
+                  label: Text('#$_tagFilter'),
+                  deleteIcon: const Icon(Icons.close, size: 16),
+                  onDeleted: () => setState(() => _tagFilter = ''),
+                  selected: true,
+                  backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.1),
+                  labelStyle: const TextStyle(
+                    color: AppColors.primaryBlue,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
+                  ),
+                  side: BorderSide(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.24),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              // ── Transaction list ───────────────────────────────────────────
+              Expanded(
+                child: expenseState.hasError
+                    ? const RecordsStateCard(
+                        title: 'Unable to load records',
+                        message: 'The transaction history is not available right now.',
+                      )
+                    : expenseState.isLoading && expenses.isEmpty
+                        ? const Center(child: CircularProgressIndicator())
+                        : filteredExpenses.isEmpty
+                            ? _buildEmptyState()
+                            : RecordsExpenseList(
+                                groupedExpenses: groupedExpenses,
+                                accounts: accounts,
+                                privacyModeEnabled: privacyModeEnabled,
+                                groupLabel: _groupLabel,
+                                accountLabelFor: _accountLabelFor,
+                                isSelectable: _isSelectionMode,
+                                selectedExpenseIds: _selectedExpenseIds,
+                                onToggleSelect: _onToggleSelectExpense,
+                                onLongPress: _onExpenseLongPress,
+                                onEdit: (expense) => _openEditExpenseScreen(context, expense),
+                                onDelete: (expense) => _confirmDeleteExpense(context, ref, expense),
+                              ),
+              ),
+            ],
           ],
         ),
       ),
-    );
-  }
+    ),
+    if (_isSelectionMode)
+      Positioned(
+        bottom: 24,
+        left: 20,
+        right: 20,
+        child: SafeArea(
+          child: Center(
+            child: Container(
+              height: 52,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: AppColors.primaryBlue,
+                borderRadius: BorderRadius.circular(26),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x330052FF),
+                    blurRadius: 16,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.share_outlined, color: Colors.white, size: 20),
+                    label: const Text(
+                      'Share',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                    ),
+                    onPressed: () => _bulkShareSelected(expenses, currency),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 24,
+                    color: Colors.white24,
+                    margin: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 20),
+                    label: const Text(
+                      'Delete',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                    ),
+                    onPressed: () => _bulkDeleteSelected(context),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
 
   Widget _buildEmptyState() {
     if (_searchQuery.isNotEmpty) {
@@ -325,6 +577,62 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
         if (!tags.contains(_tagFilter.toLowerCase())) return false;
       }
 
+      // Check quick filter
+      switch (_quickFilter) {
+        case HistoryQuickFilter.all:
+          break;
+        case HistoryQuickFilter.uncategorized:
+          final cat = expense.category.trim().toLowerCase();
+          if (cat.isNotEmpty && cat != 'uncategorized' && cat != 'uncategorised') {
+            return false;
+          }
+          break;
+        case HistoryQuickFilter.noAccount:
+          if (expense.accountId != null && expense.accountId!.isNotEmpty) {
+            return false;
+          }
+          break;
+        case HistoryQuickFilter.expense:
+          if (expense.type != TransactionType.expense) return false;
+          break;
+        case HistoryQuickFilter.income:
+          if (expense.type != TransactionType.income) return false;
+          break;
+        case HistoryQuickFilter.transfer:
+          if (expense.type != TransactionType.transfer) return false;
+          break;
+        case HistoryQuickFilter.cash:
+          final accName = accountMap[expense.accountId]?.name.toLowerCase() ?? '';
+          final note = expense.note.toLowerCase();
+          if (!accName.contains('cash') && !note.contains('cash')) return false;
+          break;
+        case HistoryQuickFilter.highAmount:
+          if (expense.amount < 1000) return false;
+          break;
+        case HistoryQuickFilter.today:
+          if (!DateUtils.isSameDay(dateOnly, today)) return false;
+          break;
+        case HistoryQuickFilter.thisWeek:
+          if (dateOnly.isBefore(weekStart) || dateOnly.isAfter(today.add(const Duration(days: 1)))) {
+            return false;
+          }
+          break;
+        case HistoryQuickFilter.thisMonth:
+          if (dateOnly.year != today.year || dateOnly.month != today.month) {
+            return false;
+          }
+          break;
+        case HistoryQuickFilter.custom:
+          if (_customDateRange != null) {
+            if (dateOnly.isBefore(_customDateRange!.start) ||
+                dateOnly.isAfter(_customDateRange!.end)) {
+              return false;
+            }
+          }
+          break;
+      }
+
+      // Check legacy filter
       switch (_selectedFilter) {
         case RecordsFilter.today:
           if (!DateUtils.isSameDay(dateOnly, today)) return false;
@@ -649,6 +957,129 @@ class _RecordsHistoryScreenState extends ConsumerState<RecordsHistoryScreen> {
     );
   }
 
+  String _quickFilterLabel(HistoryQuickFilter filter) {
+    switch (filter) {
+      case HistoryQuickFilter.all:
+        return 'All';
+      case HistoryQuickFilter.today:
+        return 'Today';
+      case HistoryQuickFilter.thisWeek:
+        return 'This Week';
+      case HistoryQuickFilter.thisMonth:
+        return 'This Month';
+      case HistoryQuickFilter.uncategorized:
+        return 'Uncategorised';
+      case HistoryQuickFilter.noAccount:
+        return 'No Account';
+      case HistoryQuickFilter.expense:
+        return 'Expense';
+      case HistoryQuickFilter.income:
+        return 'Income';
+      case HistoryQuickFilter.transfer:
+        return 'Transfer';
+      case HistoryQuickFilter.cash:
+        return 'Cash Only';
+      case HistoryQuickFilter.highAmount:
+        return 'High (>₹1k)';
+      case HistoryQuickFilter.custom:
+        if (_customDateRange != null) {
+          final fmt = DateFormat('d MMM');
+          return '${fmt.format(_customDateRange!.start)}–${fmt.format(_customDateRange!.end)}';
+        }
+        return 'Custom';
+    }
+  }
+
+  Future<void> _openAdvancedFilterSheet(BuildContext context) async {
+    final chosen = await showSingleSelectSheet<HistoryQuickFilter>(
+      context: context,
+      title: 'Filter History',
+      selectedValue: _quickFilter,
+      items: const [
+        FilterSheetItem(value: HistoryQuickFilter.all, label: 'All Transactions', icon: Icons.all_inclusive_rounded),
+        FilterSheetItem(value: HistoryQuickFilter.today, label: 'Today', icon: Icons.today_rounded),
+        FilterSheetItem(value: HistoryQuickFilter.thisWeek, label: 'This Week', icon: Icons.date_range_rounded),
+        FilterSheetItem(value: HistoryQuickFilter.thisMonth, label: 'This Month', icon: Icons.calendar_month_rounded),
+        FilterSheetItem(value: HistoryQuickFilter.expense, label: 'Expenses Only', icon: Icons.arrow_outward_rounded, iconColor: AppColors.danger),
+        FilterSheetItem(value: HistoryQuickFilter.income, label: 'Income Only', icon: Icons.arrow_downward_rounded, iconColor: AppColors.success),
+        FilterSheetItem(value: HistoryQuickFilter.transfer, label: 'Transfers Only', icon: Icons.swap_horiz_rounded, iconColor: AppColors.primaryBlue),
+        FilterSheetItem(value: HistoryQuickFilter.cash, label: 'Cash Only', icon: Icons.payments_outlined),
+        FilterSheetItem(value: HistoryQuickFilter.highAmount, label: 'High Amount (> ₹1,000)', icon: Icons.trending_up_rounded),
+        FilterSheetItem(value: HistoryQuickFilter.uncategorized, label: 'Uncategorised', icon: Icons.help_outline_rounded),
+        FilterSheetItem(value: HistoryQuickFilter.noAccount, label: 'No Account', icon: Icons.account_balance_wallet_outlined),
+        FilterSheetItem(value: HistoryQuickFilter.custom, label: 'Custom Date Range…', icon: Icons.edit_calendar_rounded),
+      ],
+    );
+
+    if (chosen != null && mounted) {
+      if (chosen == HistoryQuickFilter.custom) {
+        if (!context.mounted) return;
+        await _pickCustomDateRange(context);
+      } else {
+        setState(() {
+          _quickFilter = chosen;
+          _customDateRange = null;
+        });
+      }
+    }
+  }
+
+  Widget _buildQuickFilterPill(
+    String label,
+    HistoryQuickFilter filter, {
+    VoidCallback? onTapOverride,
+  }) {
+    final isSelected = _quickFilter == filter;
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        if (onTapOverride != null) {
+          onTapOverride();
+        }
+        setState(() {
+          _quickFilter = filter;
+          if (filter != HistoryQuickFilter.custom) {
+            _customDateRange = null;
+          }
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primaryBlue : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppColors.primaryBlue : const Color(0xFFE2E8F0),
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            color: isSelected ? Colors.white : AppColors.textDark,
+          ),
+        ),
+      ),
+    );
+  }
+
   String _csvEscape(String value) {
     if (value.contains(',') || value.contains('"') || value.contains('\n')) {
       return '"${value.replaceAll('"', '""')}"';
@@ -715,6 +1146,79 @@ class _FilterPill extends StatelessWidget {
               Icons.keyboard_arrow_down_rounded,
               size: 18,
               color: isActive ? AppColors.primaryBlue : AppColors.textMuted,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+}
+
+class _HistoryModePillSwitch extends StatelessWidget {
+  const _HistoryModePillSwitch({
+    required this.selectedView,
+    required this.onChanged,
+  });
+
+  final String selectedView;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildOption('List', Icons.view_list_rounded),
+          _buildOption('Calendar', Icons.calendar_month_rounded),
+          _buildOption('Timeline', Icons.timeline_rounded),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOption(String view, IconData icon) {
+    final isSelected = selectedView == view;
+    return GestureDetector(
+      onTap: () => onChanged(view),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: isSelected
+              ? const [
+                  BoxShadow(
+                    color: Color(0x10000000),
+                    blurRadius: 6,
+                    offset: Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 15,
+              color: isSelected ? AppColors.primaryBlue : AppColors.textMuted,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              view,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? AppColors.primaryBlue : AppColors.textMuted,
+              ),
             ),
           ],
         ),

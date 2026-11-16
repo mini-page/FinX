@@ -14,7 +14,9 @@ import 'package:expensio/routes/app_routes.dart';
 import 'stats/stats_widgets.dart';
 
 class StatsScreen extends ConsumerStatefulWidget {
-  const StatsScreen({super.key});
+  const StatsScreen({super.key, this.showBackButton});
+
+  final bool? showBackButton;
 
   @override
   ConsumerState<StatsScreen> createState() => _StatsScreenState();
@@ -116,7 +118,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             ),
           ],
         ),
-        showBackButton: false,
+        showBackButton: widget.showBackButton,
         actions: [
           IconButton(
             icon: const Icon(

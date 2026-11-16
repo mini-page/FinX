@@ -72,14 +72,6 @@ const Map<String, NavBarTabData> kAllAvailableNavBarTabs = {
     subtitle: 'Split expenses & settlements',
     color: Color(0xFFF59E0B),
   ),
-  'budget': NavBarTabData(
-    id: 'budget',
-    label: 'Budget',
-    icon: Icons.account_balance_wallet_outlined,
-    activeIcon: Icons.account_balance_wallet_rounded,
-    subtitle: 'Monthly targets & limits',
-    color: Color(0xFF22C55E),
-  ),
   'goals': NavBarTabData(
     id: 'goals',
     label: 'Goals',
@@ -87,22 +79,6 @@ const Map<String, NavBarTabData> kAllAvailableNavBarTabs = {
     activeIcon: Icons.emoji_events_rounded,
     subtitle: 'Savings targets & progress',
     color: Color(0xFFEC4899),
-  ),
-  'radar': NavBarTabData(
-    id: 'radar',
-    label: 'Radar',
-    icon: Icons.radar_outlined,
-    activeIcon: Icons.radar_rounded,
-    subtitle: 'Location-based expense sonar',
-    color: Color(0xFF06B6D4),
-  ),
-  'accounts': NavBarTabData(
-    id: 'accounts',
-    label: 'Accounts',
-    icon: Icons.account_balance_outlined,
-    activeIcon: Icons.account_balance_rounded,
-    subtitle: 'Bank & wallet balances',
-    color: Color(0xFF3B82F6),
   ),
   'settings': NavBarTabData(
     id: 'settings',

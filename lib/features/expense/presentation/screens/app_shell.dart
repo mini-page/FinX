@@ -21,9 +21,7 @@ import 'package:expensio/features/analytics/presentation/screens/stats_screen.da
 import 'voice_entry_screen.dart';
 import 'package:expensio/features/accounts/presentation/screens/tools_pages/subscriptions_screen.dart';
 import 'package:expensio/features/accounts/presentation/screens/tools_pages/split_bill_screen.dart';
-import 'package:expensio/features/accounts/presentation/screens/tools_pages/budgeting_hub_screen.dart';
 import 'package:expensio/features/accounts/presentation/screens/tools_pages/savings_goals_screen.dart';
-import 'package:expensio/features/accounts/presentation/screens/tools_pages/location_map_screen.dart';
 import '../../../sms_parser/presentation/screens/sms_settings_sheet.dart';
 import '../../../sms_parser/domain/sms_parser_engine.dart';
 
@@ -219,24 +217,19 @@ class _AppShellState extends ConsumerState<AppShell> {
       case 'home':
         return const HomeScreen();
       case 'charts':
-        return StatsScreen();
+        return const StatsScreen(showBackButton: false);
       case 'category':
-        return const CategoriesScreen();
+        return const CategoriesScreen(showBackButton: false);
       case 'tools':
-      case 'accounts':
-        return const AccountsScreen();
+        return const AccountsScreen(showBackButton: false);
       case 'subscriptions':
         return const SubscriptionsScreen(showBackButton: false);
       case 'split_bill':
         return const SplitBillScreen(showBackButton: false);
-      case 'budget':
-        return const BudgetingHubScreen(showBackButton: false);
       case 'goals':
         return const SavingsGoalsScreen(showBackButton: false);
-      case 'radar':
-        return const LocationMapScreen(showBackButton: false);
       case 'settings':
-        return const SettingsScreen();
+        return const SettingsScreen(showBackButton: false);
       default:
         return const HomeScreen();
     }
@@ -277,24 +270,6 @@ class _AppShellState extends ConsumerState<AppShell> {
           await Navigator.of(context).push<void>(
             MaterialPageRoute<void>(
               builder: (_) => const SavingsGoalsScreen(showBackButton: true),
-            ),
-          );
-        }
-        break;
-      case 'budget':
-        if (mounted) {
-          await Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => const BudgetingHubScreen(showBackButton: true),
-            ),
-          );
-        }
-        break;
-      case 'radar':
-        if (mounted) {
-          await Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => const LocationMapScreen(showBackButton: true),
             ),
           );
         }
@@ -356,7 +331,27 @@ class _AppShellState extends ConsumerState<AppShell> {
               _onScrollNotification(notification);
               return false;
             },
-            child: IndexedStack(index: _selectedIndex, children: pages),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.02, 0),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
+                  ),
+                );
+              },
+              child: KeyedSubtree(
+                key: ValueKey<String>(tabIds.length > _selectedIndex ? tabIds[_selectedIndex] : 'page_$_selectedIndex'),
+                child: pages.length > _selectedIndex ? pages[_selectedIndex] : pages.first,
+              ),
+            ),
           ),
           // Bottom Gradient Overlay for Navbar Contrast (slides out with navbar)
           AnimatedPositioned(

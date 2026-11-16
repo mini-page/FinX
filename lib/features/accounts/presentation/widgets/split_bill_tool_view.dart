@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import 'package:expensio/core/theme/app_colors.dart';
 import 'package:expensio/core/theme/app_tokens.dart';
@@ -13,6 +12,7 @@ import 'package:expensio/features/accounts/presentation/provider/participant_pro
 import 'package:expensio/features/accounts/presentation/provider/settlement_providers.dart';
 import 'package:expensio/features/accounts/data/models/participant_model.dart';
 import 'package:expensio/features/accounts/data/models/settlement_model.dart';
+import '../screens/tools_pages/splitter_profile_screen.dart';
 
 class SplitBillToolView extends ConsumerStatefulWidget {
   const SplitBillToolView({super.key});
@@ -27,7 +27,6 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
   
   Box? _splitBox;
   bool _isLoading = true;
-  bool _hasPermission = false;
   
   List<String> _contactsGallery = [];
   List<String> _customContacts = [];
@@ -38,23 +37,9 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
   String _whoPaid = 'You';
   String _splitMethod = 'Equal'; // 'Equal' or 'Exact'
   bool _showEditGallery = false;
+  int _selectedSection = 0; // 0: Manage, 1: Payments
   
   final Map<String, double> _exactAmounts = {};
-  
-  final List<String> _mockPhoneContacts = [
-    'Aleem',
-    'Rahul',
-    'Priya',
-    'Ajay',
-    'Umang',
-    'Sneha',
-    'Karan',
-    'Aditya',
-    'Vikram',
-    'Neha',
-    'Rohan',
-    'Simran',
-  ];
 
   @override
   void initState() {
@@ -86,66 +71,19 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
       _customContacts = List<String>.from(savedCustom as List);
     }
     
-    // Check permission status
-    final status = await Permission.contacts.status;
     setState(() {
-      _hasPermission = status.isGranted || _splitBox?.get('manual_bypass', defaultValue: false) == true;
       _activeSplitMembers = ['You', ..._contactsGallery];
       _isLoading = false;
     });
   }
 
-  Future<void> _requestContactPermission() async {
-    final status = await Permission.contacts.request();
-    if (status.isGranted) {
-      setState(() {
-        _hasPermission = true;
-      });
-    } else if (status.isPermanentlyDenied) {
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: Colors.white,
-            surfaceTintColor: Colors.white,
-            title: const Text('Permission Required', style: TextStyle(fontWeight: FontWeight.bold)),
-            content: const Text('Please enable contacts permission in settings to access your phone contacts, or continue manually.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
-              ),
-              TextButton(
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  await openAppSettings();
-                },
-                child: const Text('Open Settings', style: TextStyle(color: AppColors.primaryBlue)),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  await _splitBox?.put('manual_bypass', true);
-                  setState(() {
-                    _hasPermission = true;
-                  });
-                },
-                style: FilledButton.styleFrom(backgroundColor: AppColors.primaryBlue),
-                child: const Text('Bypass Manually'),
-              ),
-            ],
-          ),
-        );
-      }
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Contacts permission denied. You can add friends manually.')),
-      );
-    }
-  }
-
   List<String> _filterContacts(String query) {
-    final allList = <String>{..._mockPhoneContacts, ..._customContacts};
+    final participants = ref.read(participantListProvider).value ?? [];
+    final participantNames = participants.map((p) => p.name).toList();
+    final allList = <String>{...participantNames, ..._customContacts};
+    if (allList.isEmpty) {
+      allList.addAll(['Aleem', 'Rahul', 'Priya']);
+    }
     if (query.isEmpty) {
       return allList.toList()..sort();
     }
@@ -159,6 +97,14 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
   void _addNewCustomContact(String name) {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
+
+    // Persist as a participant
+    final existing = ref.read(participantListProvider).value ?? [];
+    if (!existing.any((p) => p.name.toLowerCase() == trimmed.toLowerCase())) {
+      final p = ParticipantModel.create(name: trimmed);
+      ref.read(participantListProvider.notifier).saveParticipant(p);
+    }
+
     setState(() {
       if (!_customContacts.contains(trimmed)) {
         _customContacts.add(trimmed);
@@ -215,16 +161,25 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
       return newParticipant.id;
     }
 
-    // Create expense
+    // Calculate user's personal share
+    final myShare = _splitMethod == 'Equal'
+        ? perPersonEqual
+        : (_exactAmounts['You'] ?? perPersonEqual);
+
+    // Create personal expense record reflecting user's actual share
     final paidById = getOrCreateId(_whoPaid);
     final note = 'Split: ${_activeSplitMembers.join(", ")}';
 
-    await ref.read(expenseControllerProvider).addExpense(
-          amount: totalAmount,
-          category: 'Social',
-          date: now,
-          note: note,
-        );
+    if (myShare > 0) {
+      await ref.read(expenseControllerProvider).addExpense(
+            amount: myShare,
+            category: 'Social',
+            date: now,
+            note: _whoPaid == 'You'
+                ? '$note (My share of ${symbol}${currency.format(totalAmount)})'
+                : '$note (Paid by $_whoPaid)',
+          );
+    }
 
     // Create settlement records for each non-payer
     for (final member in _activeSplitMembers) {
@@ -286,95 +241,6 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
     );
   }
 
-  Widget _buildPermissionScreen() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-        border: Border.all(color: const Color(0xFFEDF2F7), width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const SizedBox(height: 16),
-          Container(
-            width: 72,
-            height: 72,
-            decoration: const BoxDecoration(
-              color: Color(0xFFEFF6FF),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.people_alt_rounded,
-              size: 36,
-              color: AppColors.primaryBlue,
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Access Contacts',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textDark,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Select friends from your phone contacts to quickly split expenses. Setup is done only once.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.textMuted,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: FilledButton.icon(
-              onPressed: _requestContactPermission,
-              icon: const Icon(Icons.contact_phone_rounded, size: 18),
-              label: const Text('Grant Contact Access', style: TextStyle(fontWeight: FontWeight.bold)),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primaryBlue,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () async {
-              await _splitBox?.put('manual_bypass', true);
-              setState(() {
-                _hasPermission = true;
-              });
-            },
-            child: const Text(
-              'Add People Manually',
-              style: TextStyle(
-                color: AppColors.primaryBlue,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildEditGalleryView() {
     final searchResults = _filterContacts(_searchQuery);
     return Container(
@@ -408,7 +274,7 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
                 },
               ),
               const Text(
-                'Select Friends',
+                'Select Split Partners',
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w900,
@@ -420,7 +286,7 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
           const SizedBox(height: 12),
           AppSearchBar(
             controller: _searchController,
-            hintText: 'Search contacts or type name...',
+            hintText: 'Search or type friend\'s name to add...',
             onChanged: (val) {
               setState(() {
                 _searchQuery = val;
@@ -655,23 +521,74 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
             height: 52,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: _activeSplitMembers.length,
+              itemCount: _activeSplitMembers.length + 1,
               itemBuilder: (context, idx) {
+                if (idx == _activeSplitMembers.length) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedGalleryPeople = List<String>.from(_contactsGallery);
+                          _showEditGallery = true;
+                        });
+                      },
+                      child: const Tooltip(
+                        message: 'Add Splitter',
+                        child: CircleAvatar(
+                          radius: 20,
+                          backgroundColor: Color(0xFFEFF6FF),
+                          child: Icon(Icons.add_rounded, color: AppColors.primaryBlue, size: 22),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
                 final name = _activeSplitMembers[idx];
                 final isYou = name == 'You';
                 return Padding(
                   padding: const EdgeInsets.only(right: 12),
-                  child: Tooltip(
-                    message: name,
-                    child: CircleAvatar(
-                      radius: 20,
-                      backgroundColor: isYou ? AppColors.primaryBlue : const Color(0xFFF1F5F9),
-                      child: Text(
-                        isYou ? 'Y' : name[0].toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: isYou ? Colors.white : AppColors.textDark,
+                  child: GestureDetector(
+                    onTap: isYou
+                        ? null
+                        : () {
+                            final participants = ref.read(participantListProvider).value ?? [];
+                            final p = participants.where((item) => item.name.toLowerCase() == name.toLowerCase()).firstOrNull;
+                            if (p != null) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => SplitterProfileScreen(
+                                    participantId: p.id,
+                                    participantName: p.name,
+                                  ),
+                                ),
+                              );
+                            } else {
+                              final newP = ParticipantModel.create(name: name);
+                              ref.read(participantListProvider.notifier).saveParticipant(newP);
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => SplitterProfileScreen(
+                                    participantId: newP.id,
+                                    participantName: newP.name,
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                    child: Tooltip(
+                      message: isYou ? 'You' : '$name (Tap to view details)',
+                      child: CircleAvatar(
+                        radius: 20,
+                        backgroundColor: isYou ? AppColors.primaryBlue : const Color(0xFFF1F5F9),
+                        child: Text(
+                          isYou ? 'Y' : name[0].toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: isYou ? Colors.white : AppColors.textDark,
+                          ),
                         ),
                       ),
                     ),
@@ -960,8 +877,7 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
             ),
           ),
 
-          const SizedBox(height: 24),
-          _PendingDebtsSection(),
+
         ],
       ),
     );
@@ -976,22 +892,110 @@ class _SplitBillToolViewState extends ConsumerState<SplitBillToolView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Split Bill',
-          style: AppTextStyles.sectionHeading,
+        // Tab switcher: Manage | Payments
+        Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() {
+                    _selectedSection = 0;
+                    _showEditGallery = false;
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _selectedSection == 0 ? Colors.white : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: _selectedSection == 0
+                          ? [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.06),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              )
+                            ]
+                          : null,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Manage',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        color: _selectedSection == 0 ? AppColors.textDark : AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() {
+                    _selectedSection = 1;
+                    _showEditGallery = false;
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _selectedSection == 1 ? Colors.white : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: _selectedSection == 1
+                          ? [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.06),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              )
+                            ]
+                          : null,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Payments',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        color: _selectedSection == 1 ? AppColors.textDark : AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        const Text(
-          'Calculate fair shares instantly',
-          style: AppTextStyles.sectionSubtitle,
-        ),
-        const SizedBox(height: AppSpacing.md),
-        
-        if (!_hasPermission)
-          _buildPermissionScreen()
-        else if (_showEditGallery)
-          _buildEditGalleryView()
-        else
-          _buildMainSplitView(),
+
+        if (_selectedSection == 0) ...[
+          if (_showEditGallery)
+            _buildEditGalleryView()
+          else
+            _buildMainSplitView(),
+        ] else ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+              border: Border.all(color: const Color(0xFFEDF2F7), width: 1),
+            ),
+            child: _PendingDebtsSection(),
+          ),
+        ],
       ],
     );
   }
@@ -1007,8 +1011,45 @@ class _PendingDebtsSection extends ConsumerWidget {
     final balances = ref.watch(participantBalancesProvider);
     final currency = ref.watch(currencyFormatProvider);
 
-    if (pending.isEmpty && suggestions.isEmpty) {
-      return const SizedBox.shrink();
+    if (pending.isEmpty && suggestions.isEmpty && balances.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 32),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFEFF6FF),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.receipt_long_rounded, color: AppColors.primaryBlue, size: 28),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'No Payments Pending',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'When you split an expense, balances and settlements will appear here.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textMuted,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return Column(
@@ -1166,24 +1207,24 @@ class _PendingDebtsSection extends ConsumerWidget {
                       GestureDetector(
                         onTap: () async {
                           await ref.read(settlementControllerProvider)
-                              .createSettlementFromSuggestion(s);
+                              .settleSuggestion(s);
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Recorded: ${s.fromName} owes ${currency.format(s.amount)} to ${s.toName}'),
+                                content: Text('Settled: ${s.fromName} paid ${currency.format(s.amount)} to ${s.toName}'),
                                 backgroundColor: AppColors.textDark,
                               ),
                             );
                           }
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
                             color: AppColors.success,
                             borderRadius: BorderRadius.circular(AppRadii.pill),
                           ),
                           child: const Text(
-                            'Record',
+                            'Settle',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 10,
@@ -1213,183 +1254,10 @@ class _PendingDebtsSection extends ConsumerWidget {
   void _openPersonDetail(BuildContext context, WidgetRef ref, String participantId, String name) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => _PersonSettlementScreen(
+        builder: (_) => SplitterProfileScreen(
           participantId: participantId,
           participantName: name,
         ),
-      ),
-    );
-  }
-}
-
-// ── Person Settlement Detail Screen ───────────────────────────────────────────
-
-class _PersonSettlementScreen extends ConsumerWidget {
-  const _PersonSettlementScreen({
-    required this.participantId,
-    required this.participantName,
-  });
-
-  final String participantId;
-  final String participantName;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final settlements = ref.watch(settlementListProvider).value ?? [];
-    final currency = ref.watch(currencyFormatProvider);
-
-    final pending = settlements.where((s) =>
-        !s.isSettled &&
-        (s.fromParticipantId == participantId || s.toParticipantId == participantId)).toList();
-    final settled = settlements.where((s) =>
-        s.isSettled &&
-        (s.fromParticipantId == participantId || s.toParticipantId == participantId)).toList();
-
-    double netBalance = 0;
-    for (final s in pending) {
-      if (s.fromParticipantId == participantId) netBalance -= s.amount;
-      if (s.toParticipantId == participantId) netBalance += s.amount;
-    }
-
-    return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: GestureDetector(
-          onTap: () => Navigator.of(context).pop(),
-          child: Container(
-            margin: const EdgeInsets.only(left: 8),
-            width: 36, height: 36,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 8, offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: const Icon(Icons.chevron_left_rounded,
-                color: AppColors.textDark, size: 22),
-          ),
-        ),
-        title: Text(
-          participantName,
-          style: const TextStyle(
-            color: AppColors.textDark,
-            fontWeight: FontWeight.w900,
-            fontSize: 18,
-          ),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
-        children: [
-          // Balance card
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(AppRadii.lg),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 14, offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Text(
-                  'Net Balance',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${netBalance >= 0 ? '+' : ''}${currency.format(netBalance)}',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
-                    color: netBalance >= 0 ? AppColors.success : AppColors.danger,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  netBalance >= 0
-                      ? '${participantName} is owed this amount'
-                      : '${participantName} owes this amount',
-                  style: TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Pending settlements
-          if (pending.isNotEmpty) ...[
-            Text(
-              'Pending (${pending.length})',
-              style: const TextStyle(
-                color: AppColors.textDark,
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 10),
-            ...pending.map((s) => _SettlementTile(
-              settlement: s,
-              isIncoming: s.toParticipantId == participantId,
-              currency: currency,
-              onSettle: () => ref.read(settlementControllerProvider).markSettled(s.id),
-            )),
-            const SizedBox(height: 20),
-          ],
-
-          // Settled history
-          if (settled.isNotEmpty) ...[
-            Text(
-              'Settled History',
-              style: const TextStyle(
-                color: AppColors.textDark,
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 10),
-            ...settled.map((s) => _SettlementTile(
-              settlement: s,
-              isIncoming: s.toParticipantId == participantId,
-              currency: currency,
-              showSettleButton: false,
-            )),
-          ],
-
-          if (pending.isEmpty && settled.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 40),
-              child: Center(
-                child: Text(
-                  'No settlement records yet.',
-                  style: TextStyle(
-                    color: AppColors.textMuted,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }
@@ -1414,10 +1282,6 @@ class _SettlementTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final otherName = isIncoming
-        ? settlement.fromParticipantName
-        : settlement.toParticipantName;
-
     return Container(
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 8),
@@ -1453,7 +1317,7 @@ class _SettlementTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isIncoming ? '$otherName → You' : 'You → $otherName',
+                  '${settlement.fromParticipantName} → ${settlement.toParticipantName}',
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 13,

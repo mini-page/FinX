@@ -11,12 +11,14 @@ class AccountFormResult {
     required this.name,
     required this.iconKey,
     required this.balance,
+    this.isDelete = false,
   });
 
   final String? id;
   final String name;
   final String iconKey;
   final double balance;
+  final bool isDelete;
 }
 
 Future<AccountFormResult?> showAccountEditorSheet(
@@ -165,6 +167,27 @@ class _AccountEditorSheetState extends State<_AccountEditorSheet> {
                 ),
               ),
             ),
+            if (widget.account != null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _delete,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.danger,
+                    side: const BorderSide(color: AppColors.danger),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  child: const Text(
+                    'Delete Account',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -181,6 +204,40 @@ class _AccountEditorSheetState extends State<_AccountEditorSheet> {
         borderSide: BorderSide.none,
       ),
     );
+  }
+
+  Future<void> _delete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Account'),
+        content: Text(
+          'Are you sure you want to delete "${widget.account?.name}"? Transactions assigned to this account will remain in your records.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      Navigator.of(context).pop(
+        AccountFormResult(
+          id: widget.account?.id,
+          name: _nameController.text.trim(),
+          iconKey: _iconKey,
+          balance: 0,
+          isDelete: true,
+        ),
+      );
+    }
   }
 
   void _submit() {

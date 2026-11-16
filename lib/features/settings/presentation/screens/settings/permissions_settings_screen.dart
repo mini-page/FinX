@@ -12,7 +12,6 @@ class PermissionsSettingsScreen extends StatefulWidget {
 
 class _PermissionsSettingsScreenState extends State<PermissionsSettingsScreen> with WidgetsBindingObserver {
   bool _smsGranted = false;
-  bool _locationGranted = false;
   bool _notificationGranted = false;
   bool _cameraGranted = false;
   bool _loading = true;
@@ -39,14 +38,12 @@ class _PermissionsSettingsScreenState extends State<PermissionsSettingsScreen> w
 
   Future<void> _checkPermissions() async {
     final sms = await Permission.sms.isGranted;
-    final location = await Permission.locationWhenInUse.isGranted;
     final notification = await Permission.notification.isGranted;
     final camera = await Permission.camera.isGranted;
 
     if (mounted) {
       setState(() {
         _smsGranted = sms;
-        _locationGranted = location;
         _notificationGranted = notification;
         _cameraGranted = camera;
         _loading = false;
@@ -153,7 +150,7 @@ class _PermissionsSettingsScreenState extends State<PermissionsSettingsScreen> w
                               ),
                               SizedBox(height: 4),
                               Text(
-                                'Expensio requires system accesses to automate transaction imports, geolocation mapping, and QR scanners.',
+                                'Expensio requires system accesses to automate transaction imports, smart alerts, and QR scanners.',
                                 style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.4),
                               ),
                             ],
@@ -197,14 +194,7 @@ class _PermissionsSettingsScreenState extends State<PermissionsSettingsScreen> w
                           isGranted: _smsGranted,
                           onTap: () => _requestPermission(Permission.sms, 'SMS'),
                         ),
-                        const Divider(height: 1, indent: 64, endIndent: 16),
-                        _buildPermissionTile(
-                          icon: Icons.location_on_rounded,
-                          title: 'GPS Location Access',
-                          description: 'Attach exact location coordinates to transaction entries.',
-                          isGranted: _locationGranted,
-                          onTap: () => _requestPermission(Permission.locationWhenInUse, 'Location'),
-                        ),
+
                         const Divider(height: 1, indent: 64, endIndent: 16),
                         _buildPermissionTile(
                           icon: Icons.notifications_active_rounded,

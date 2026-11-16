@@ -8,8 +8,11 @@ import '../../../../../shared/widgets/floating_nav_bar.dart';
 import '../../provider/preferences_providers.dart';
 import 'settings_widgets.dart';
 
-/// Dedicated Settings page for customizing the bottom navigation bar (3 to 8 tabs)
-/// and configuring Quick Add (+) button gestures (Tap, Double Tap, Long Press).
+/// Dedicated Settings page for customizing the bottom navigation bar tabs.
+/// Rules enforced:
+/// 1. Home cannot be disabled, removed, or reordered; always first (index 0).
+/// 2. Tools tab cannot be removed or disabled, but can be reordered (indices 1..N).
+/// 3. Minimum 3 tabs; maximum can include any available tools without restriction.
 class NavigationGesturesSettingsScreen extends ConsumerStatefulWidget {
   const NavigationGesturesSettingsScreen({super.key});
 
@@ -23,24 +26,39 @@ class _NavigationGesturesSettingsScreenState
   late List<String> _tabs;
   int _previewIndex = 0;
 
-  static const _fabActionOptions = <({String value, String label, IconData? icon, Color? iconColor})>[
-    (value: 'scanner', label: 'Scan (QR & Bill)', icon: Icons.qr_code_scanner_rounded, iconColor: Color(0xFF00B0FF)),
-    (value: 'voice', label: 'Voice Entry', icon: Icons.mic_none_rounded, iconColor: Color(0xFF7B2FF7)),
-    (value: 'add', label: 'Add Transaction', icon: Icons.add_circle_outline_rounded, iconColor: AppColors.primaryBlue),
-    (value: 'subscriptions', label: 'Subscriptions & Bills', icon: Icons.autorenew_rounded, iconColor: Color(0xFF10B981)),
-    (value: 'split', label: 'Split Bill', icon: Icons.call_split_rounded, iconColor: Color(0xFFF59E0B)),
-    (value: 'goals', label: 'Financial Goals', icon: Icons.emoji_events_outlined, iconColor: Color(0xFFEC4899)),
-    (value: 'budget', label: 'Budgeting Hub', icon: Icons.account_balance_wallet_outlined, iconColor: Color(0xFF6366F1)),
-    (value: 'radar', label: 'Location Radar', icon: Icons.radar_rounded, iconColor: Color(0xFF0EA5E9)),
-  ];
-
   @override
   void initState() {
     super.initState();
     _tabs = List<String>.from(ref.read(navbarTabsProvider));
+    _ensureRules();
+  }
+
+  void _ensureRules() {
+    // Rule 1: Home must be at index 0
+    _tabs.remove('home');
+    _tabs.insert(0, 'home');
+    // Rule 2: Tools must be present
+    if (!_tabs.contains('tools')) {
+      _tabs.add('tools');
+    }
   }
 
   void _onReorder(int oldIndex, int newIndex) {
+    // Rule 1: Home cannot be reordered or moved
+    if (oldIndex == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Home is permanently fixed as the first tab.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    if (newIndex <= 0) {
+      newIndex = 1;
+    }
+
     HapticFeedback.selectionClick();
     setState(() {
       if (newIndex > oldIndex) {
@@ -48,12 +66,31 @@ class _NavigationGesturesSettingsScreenState
       }
       final item = _tabs.removeAt(oldIndex);
       _tabs.insert(newIndex, item);
+      _ensureRules();
       _previewIndex = 0;
     });
     ref.read(appPreferencesControllerProvider).setNavbarTabs(_tabs);
   }
 
   void _removeTab(String tabId) {
+    if (tabId == 'home') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Home tab cannot be removed or disabled.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    if (tabId == 'tools') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tools tab is required and cannot be removed.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
     if (_tabs.length <= 3) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -66,6 +103,7 @@ class _NavigationGesturesSettingsScreenState
     HapticFeedback.mediumImpact();
     setState(() {
       _tabs.remove(tabId);
+      _ensureRules();
       if (_previewIndex >= _tabs.length) {
         _previewIndex = 0;
       }
@@ -74,18 +112,10 @@ class _NavigationGesturesSettingsScreenState
   }
 
   void _addTab(String tabId) {
-    if (_tabs.length >= 8) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Maximum 8 navigation tabs allowed.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
     HapticFeedback.mediumImpact();
     setState(() {
       _tabs.add(tabId);
+      _ensureRules();
       _previewIndex = _tabs.length - 1;
     });
     ref.read(appPreferencesControllerProvider).setNavbarTabs(_tabs);
@@ -95,6 +125,7 @@ class _NavigationGesturesSettingsScreenState
     HapticFeedback.mediumImpact();
     setState(() {
       _tabs = List<String>.from(defaultNavBarTabIds);
+      _ensureRules();
       _previewIndex = 0;
     });
     ref.read(appPreferencesControllerProvider).setNavbarTabs(_tabs);
@@ -102,10 +133,6 @@ class _NavigationGesturesSettingsScreenState
 
   @override
   Widget build(BuildContext context) {
-    final controller = ref.read(appPreferencesControllerProvider);
-    final fabDoubleTap = ref.watch(fabDoubleTapActionProvider);
-    final fabLongPress = ref.watch(fabLongPressActionProvider);
-
     final availableToAdd = kAllAvailableNavBarTabs.keys
         .where((id) => !_tabs.contains(id))
         .toList();
@@ -118,7 +145,7 @@ class _NavigationGesturesSettingsScreenState
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
       appBar: const GradientAppBar(
-        title: 'Navigation & Gestures',
+        title: 'Navigation Tabs',
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 60),
@@ -129,86 +156,7 @@ class _NavigationGesturesSettingsScreenState
             _buildPinnedPreviewCard(previewTabs),
             const SizedBox(height: 28),
 
-            // ── 2. QUICK ADD (+) BUTTON GESTURES ──────────────────────────────
-            const SettingsSectionHeader(title: 'Quick Add (+) Button Gestures'),
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 12),
-              child: Text(
-                'Configure shortcuts triggered by interacting with the floating Quick Add button on Home.',
-                style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.8), fontSize: 13),
-              ),
-            ),
-            SettingsCard(
-              children: [
-                ListTile(
-                  leading: const SettingsTileIcon(icon: Icons.touch_app_rounded),
-                  title: const Text(
-                    'Single Tap',
-                    style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: const Text(
-                    'Open new transaction logging form',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-                  ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryBlue.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'Add Transaction',
-                      style: TextStyle(
-                        color: AppColors.primaryBlue,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ),
-                ListTile(
-                  leading: const SettingsTileIcon(icon: Icons.gesture_rounded),
-                  title: const Text(
-                    'Double Tap Action',
-                    style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: const Text(
-                    'Action triggered on double-tapping + button',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-                  ),
-                  trailing: SettingsChoiceMenu(
-                    value: fabDoubleTap,
-                    sheetTitle: 'Double Tap Action',
-                    onChanged: (val) {
-                      if (val != null) controller.setFabDoubleTapAction(val);
-                    },
-                    options: _fabActionOptions,
-                  ),
-                ),
-                ListTile(
-                  leading: const SettingsTileIcon(icon: Icons.pan_tool_rounded),
-                  title: const Text(
-                    'Long Press Action',
-                    style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: const Text(
-                    'Action triggered on holding + button',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-                  ),
-                  trailing: SettingsChoiceMenu(
-                    value: fabLongPress,
-                    sheetTitle: 'Long Press Action',
-                    onChanged: (val) {
-                      if (val != null) controller.setFabLongPressAction(val);
-                    },
-                    options: _fabActionOptions,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 28),
-
-            // ── 3. BOTTOM NAVIGATION TABS (3 TO 8) ────────────────────────────
+            // ── 2. ACTIVE NAVIGATION TABS (REORDERABLE) ────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -230,7 +178,7 @@ class _NavigationGesturesSettingsScreenState
             Padding(
               padding: const EdgeInsets.only(left: 4, bottom: 12),
               child: Text(
-                'Drag handles to reorder. You can add between 3 and 8 tools to your bottom bar. Tabs display without top back buttons when active.',
+                'Home is locked first. Drag handles to reorder your other tools (minimum 3 tabs required).',
                 style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.8), fontSize: 13),
               ),
             ),
@@ -246,6 +194,9 @@ class _NavigationGesturesSettingsScreenState
                 final data = kAllAvailableNavBarTabs[tabId];
                 if (data == null) return SizedBox.shrink(key: ValueKey(tabId));
 
+                final isHome = tabId == 'home';
+                final isTools = tabId == 'tools';
+
                 return Container(
                   key: ValueKey(tabId),
                   margin: const EdgeInsets.only(bottom: 10),
@@ -253,7 +204,11 @@ class _NavigationGesturesSettingsScreenState
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(
+                      color: isHome
+                          ? AppColors.primaryBlue.withValues(alpha: 0.25)
+                          : const Color(0xFFE2E8F0),
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.03),
@@ -264,21 +219,35 @@ class _NavigationGesturesSettingsScreenState
                   ),
                   child: Row(
                     children: [
-                      ReorderableDragStartListener(
-                        index: index,
-                        child: Container(
+                      if (isHome)
+                        Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
+                            color: AppColors.primaryBlue.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
-                            Icons.drag_indicator_rounded,
-                            color: Color(0xFF64748B),
-                            size: 20,
+                            Icons.lock_rounded,
+                            color: AppColors.primaryBlue,
+                            size: 18,
+                          ),
+                        )
+                      else
+                        ReorderableDragStartListener(
+                          index: index,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.drag_indicator_rounded,
+                              color: Color(0xFF64748B),
+                              size: 20,
+                            ),
                           ),
                         ),
-                      ),
                       const SizedBox(width: 12),
                       Container(
                         width: 40,
@@ -298,13 +267,52 @@ class _NavigationGesturesSettingsScreenState
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              data.label,
-                              style: const TextStyle(
-                                color: AppColors.textDark,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                              ),
+                            Row(
+                              children: [
+                                Text(
+                                  data.label,
+                                  style: const TextStyle(
+                                    color: AppColors.textDark,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                if (isHome) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      'Locked (First)',
+                                      style: TextStyle(
+                                        color: AppColors.primaryBlue,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ] else if (isTools) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0EA5E9).withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      'Required',
+                                      style: TextStyle(
+                                        color: Color(0xFF0EA5E9),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                             if (data.subtitle != null) ...[
                               const SizedBox(height: 2),
@@ -320,29 +328,44 @@ class _NavigationGesturesSettingsScreenState
                           ],
                         ),
                       ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.remove_circle_outline_rounded,
-                          color: _tabs.length > 3 ? AppColors.danger : const Color(0xFFCBD5E1),
-                          size: 22,
+                      if (isHome)
+                        const SizedBox(width: 48)
+                      else if (isTools)
+                        const Tooltip(
+                          message: 'Tools tab cannot be removed',
+                          child: Padding(
+                            padding: EdgeInsets.all(12),
+                            child: Icon(
+                              Icons.verified_user_outlined,
+                              color: Color(0xFF94A3B8),
+                              size: 20,
+                            ),
+                          ),
+                        )
+                      else
+                        IconButton(
+                          icon: Icon(
+                            Icons.remove_circle_outline_rounded,
+                            color: _tabs.length > 3 ? AppColors.danger : const Color(0xFFCBD5E1),
+                            size: 22,
+                          ),
+                          tooltip: _tabs.length > 3 ? 'Remove Tab' : 'Minimum 3 tabs required',
+                          onPressed: _tabs.length > 3 ? () => _removeTab(tabId) : null,
                         ),
-                        tooltip: _tabs.length > 3 ? 'Remove Tab' : 'Minimum 3 tabs required',
-                        onPressed: _tabs.length > 3 ? () => _removeTab(tabId) : null,
-                      ),
                     ],
                   ),
                 );
               },
             ),
 
-            // ── 4. ADD TOOLS TO NAVIGATION BAR ────────────────────────────────
-            if (availableToAdd.isNotEmpty && _tabs.length < 8) ...[
+            // ── 3. ADD TOOLS TO NAVIGATION BAR ────────────────────────────────
+            if (availableToAdd.isNotEmpty) ...[
               const SizedBox(height: 24),
               const SettingsSectionHeader(title: 'Add from Finance Tools & Hub'),
               Padding(
                 padding: const EdgeInsets.only(left: 4, bottom: 12),
                 child: Text(
-                  'Tap "+ Add" to include any tool directly into your bottom bar (up to 8 total):',
+                  'Tap "+ Add" to include any tool directly into your bottom bar:',
                   style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.8), fontSize: 13),
                 ),
               ),
@@ -394,32 +417,6 @@ class _NavigationGesturesSettingsScreenState
                     ),
                   );
                 }).toList(),
-              ),
-            ] else if (_tabs.length >= 8) ...[
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFBFDBFE)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.info_outline_rounded, color: AppColors.primaryBlue, size: 20),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Maximum of 8 tabs reached. Remove a tab above to add a different tool.',
-                        style: TextStyle(
-                          color: Color(0xFF1E3A8A),
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
             ],
           ],
@@ -485,7 +482,7 @@ class _NavigationGesturesSettingsScreenState
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    '${previewTabs.length} of 8 Tabs',
+                    '${previewTabs.length} Tabs Active',
                     style: const TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w800,

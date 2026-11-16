@@ -7,8 +7,6 @@ import '../features/expense/presentation/screens/records_history_screen.dart';
 import '../features/expense/presentation/screens/unified_scanner_screen.dart';
 import 'package:expensio/features/settings/presentation/screens/settings_screen.dart';
 import '../features/expense/presentation/screens/upi_scanner_screen.dart';
-import '../features/expense/presentation/screens/calendar_view_screen.dart';
-import '../features/accounts/presentation/screens/tools_pages/location_map_screen.dart';
 
 /// Centralised navigation helpers for Expensio.
 ///
@@ -82,10 +80,12 @@ abstract final class AppRoutes {
 
   // ── Calendar View ──────────────────────────────────────────────────────────
 
-  /// Push the calendar and timeline view screen.
+  /// Push the calendar and timeline view screen (now integrated into History).
   static Future<void> pushCalendarView(BuildContext context, {DateTime? initialDate}) {
     return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => CalendarViewScreen(initialDate: initialDate)),
+      MaterialPageRoute<void>(
+        builder: (_) => const RecordsHistoryScreen(initialViewMode: 'Calendar'),
+      ),
     );
   }
 
@@ -182,13 +182,6 @@ abstract final class AppRoutes {
   }
 
 
-
-  /// Push [LocationMapScreen] to explore transactions on the radar map.
-  static Future<void> pushLocationMap(BuildContext context) {
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const LocationMapScreen()),
-    );
-  }
 
   // ── Scanner (legacy alias) ─────────────────────────────────────────────────
 

@@ -59,3 +59,19 @@ To search, find, and navigate the repository, prioritize using modern CLI utilit
 - **Verification First:** Before finalizing any architectural or code changes, verify using `flutter analyze` and `flutter test`. Ensure all tests pass.
 - **Impact Analysis:** Run `gitnexus_impact` or similar impact mapping when modifying critical symbols.
 - **Living Memory:** You **must** update `memory.md` at the end of each session. Append changes to the Change Log and update the Layout structure to reflect reality.
+
+### 3. Project Automation Suite (`fx` / `tool/fx.py`)
+To eliminate repetitive manual steps and eliminate 90% of routine overhead, use the unified `fx` automation tool (via `fx`, `.\fx.bat`, or `python tool/fx.py`):
+- **Smart Diagnostics:** `fx analyze` (instantly separates true compiler errors from deprecation/info warnings).
+- **All-In-One Dev Cycle:** `fx run` (executes analyze -> build APK -> auto-connect ADB -> install -> launch `MainActivity`).
+- **Build APK:** `fx build [--debug|--release]` (builds for `android-arm64`).
+- **Deploy & Launch:** `fx deploy` (discovers active device, installs APK with `-r`, launches app, verifies process PID).
+- **Device Management:** `fx connect <ip:port>` (connects to wireless ADB device and persists IP in `.adb_device`).
+- **Flawless Screenshots:** `fx snap [filename]` (captures device screen directly without PowerShell UTF-16 redirection corruption).
+- **Safe Code Patcher:** `fx patch <file> --find "..." --replace "..."` (CRLF/LF agnostic multi-line string replacement with backup).
+- **Modern CLI Integration:**
+  - `fx find <query>`: Uses `fd` with smart exclusions (`.dart_tool`, `build`, `.git`, `.gradle`).
+  - `fx search <pattern>`: Uses `ripgrep` (`rg`) with smart exclusions.
+  - `fx view <file> [-s start] [-e end]`: Uses `bat` with line numbers and syntax highlighting.
+  - `fx tree [dir] [-l depth]`: Uses `eza` for visual directory trees.
+- **Living Memory:** `fx memory "<title>" -b "<bullet1>" "<bullet2>"` (appends structured log to `memory.md`).

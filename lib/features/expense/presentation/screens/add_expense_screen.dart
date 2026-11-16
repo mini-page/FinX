@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:expensio/features/accounts/presentation/provider/settlement_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -18,6 +18,12 @@ import '../provider/expense_providers.dart';
 import 'package:expensio/features/settings/presentation/provider/preferences_providers.dart';
 import 'package:expensio/features/categories/presentation/widgets/expense_category.dart';
 import 'add_expense/add_expense_widgets.dart';
+import 'add_expense/omni_text_controller.dart';
+import 'add_expense/omni_box_parser.dart';
+import 'add_expense/category_selection_sheet.dart';
+import 'add_expense/account_selection_sheet.dart';
+import 'package:expensio/features/accounts/presentation/widgets/account_icons.dart';
+
 import 'add_expense/amount_expression.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
@@ -81,6 +87,10 @@ class AddExpenseScreen extends ConsumerStatefulWidget {
 
 class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
     with WidgetsBindingObserver {
+  late final OmniTextEditingController _omniController;
+  late final FocusNode _omniFocusNode;
+  OmniActiveTrigger _activeTrigger = OmniActiveTrigger.none;
+  String _extractedDescription = '';
   late final TextEditingController _noteController;
   late final FocusNode _noteFocusNode;
   late final TextEditingController _amountController;
@@ -99,10 +109,6 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
   // Custom visual state variables for the redesigned layout
   bool _showCalculator = false;
   String? _activePreviewChip;
-  bool _locationEnabled = false;
-  double? _latitude;
-  double? _longitude;
-  bool _isFetchingLocation = false;
   String? _attachedFilePath;
   String? _attachedImagePath;
   late String _selectedCurrency;
@@ -186,12 +192,28 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
     _hasExplicitAccountChoice =
         widget.initialAccountId != null || widget.isEditing;
     _selectedSubcategory = widget.initialSubcategory;
-    _locationEnabled = widget.initialLatitude != null && widget.initialLongitude != null;
-    _latitude = widget.initialLatitude;
-    _longitude = widget.initialLongitude;
     _noteController = TextEditingController(text: widget.initialNote ?? '')
       ..addListener(_onNoteControllerChanged);
     _noteFocusNode = FocusNode()..addListener(_handleNoteFocusChanged);
+    final initParts = <String>[];
+    if (initAmt != null && initAmt > 0) {
+      initParts.add(normalizeAmountSeed(initAmt));
+    }
+    if (widget.initialCategory != null && widget.initialCategory!.isNotEmpty) {
+      final cName = widget.initialCategory!.replaceAll(' ', '_');
+      if (widget.initialSubcategory != null && widget.initialSubcategory!.isNotEmpty) {
+        initParts.add('/$cName:${widget.initialSubcategory!.replaceAll(' ', '_')}');
+      } else {
+        initParts.add('/$cName');
+      }
+    }
+    if (widget.initialNote != null && widget.initialNote!.isNotEmpty) {
+      initParts.add(widget.initialNote!);
+    }
+    _omniController = OmniTextEditingController(text: initParts.join(' '));
+    _omniFocusNode = FocusNode();
+    _omniController.addListener(_onOmniControllerChanged);
+
 
     _tipsTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (mounted) {
@@ -592,6 +614,10 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
 
   @override
   void dispose() {
+    _omniController.removeListener(_onOmniControllerChanged);
+    _omniController.dispose();
+    _omniFocusNode.dispose();
+
     _tipsTimer.cancel();
     if (widget.isPayMode) {
       WidgetsBinding.instance.removeObserver(this);
@@ -654,6 +680,867 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
     }
     // If "No, Retry", _paymentDone stays false and the "Pay via UPI" button
     // is shown again.
+  }
+
+
+  // ── OMNI CONTROLLER LISTENER & PARSER ─────────────────────────────────────
+
+  void _onOmniControllerChanged() {
+    final text = _omniController.text;
+    final selection = _omniController.selection;
+    final cursor = selection.baseOffset >= 0 ? selection.baseOffset : text.length;
+
+    final trigger = OmniBoxParser.detectActiveTrigger(text, cursor);
+
+    final accounts = ref.read(accountListProvider).value ?? const <AccountModel>[];
+    final allExpense = ref.read(allExpenseCategoriesProvider);
+    final allIncome = ref.read(allIncomeCategoriesProvider);
+    final subcats = ref.read(categorySubcategoriesProvider);
+    final cats = _selectedType == TransactionType.income ? allIncome : allExpense;
+
+    final parsed = OmniBoxParser.parse(
+      text: text,
+      accounts: accounts,
+      categories: cats,
+      subcategoriesMap: subcats,
+      transactionType: _selectedType,
+    );
+
+    setState(() {
+      _activeTrigger = trigger;
+      _amountExpression = parsed.amountExpression;
+      _amountController.text = parsed.amountExpression;
+      if (parsed.matchedAccountId != null) {
+        _selectedAccountId = parsed.matchedAccountId;
+        _hasExplicitAccountChoice = true;
+      }
+      if (parsed.matchedToAccountId != null) {
+        _toAccountId = parsed.matchedToAccountId;
+      }
+      if (parsed.matchedCategoryName != null) {
+        if (_selectedType == TransactionType.income) {
+          _selectedIncomeCategory = parsed.matchedCategoryName!;
+        } else {
+          _selectedExpenseCategory = parsed.matchedCategoryName!;
+        }
+      }
+      if (parsed.matchedSubcategoryName != null) {
+        _selectedSubcategory = parsed.matchedSubcategoryName;
+      }
+      _extractedDescription = parsed.description;
+      if (parsed.matchedDate != null) {
+        _selectedDate = parsed.matchedDate!;
+      }
+      _noteController.text = parsed.description;
+    });
+  }
+
+  void _selectAccount(AccountModel acc, {bool isFromAccount = true}) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (isFromAccount) {
+        _selectedAccountId = acc.id;
+        _hasExplicitAccountChoice = true;
+      } else {
+        _toAccountId = acc.id;
+      }
+    });
+
+    final prefix = isFromAccount ? '@' : ':';
+    final token = '$prefix${acc.name.replaceAll(' ', '_')} ';
+
+    if (_activeTrigger.type == (isFromAccount ? OmniTriggerType.account : OmniTriggerType.toAccount) &&
+        _activeTrigger.startIndex >= 0) {
+      final current = _omniController.text;
+      final start = _activeTrigger.startIndex;
+      final end = _activeTrigger.endIndex;
+      final newText = current.replaceRange(start, end, token);
+      _omniController.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: start + token.length),
+      );
+    } else {
+      final current = _omniController.text;
+      final reg = RegExp('$prefix\\S+');
+      if (reg.hasMatch(current)) {
+        final newText = current.replaceFirst(reg, token.trim());
+        _omniController.text = newText;
+      } else {
+        _omniController.text = current.isEmpty ? token : '$current $token';
+      }
+    }
+  }
+
+  void _selectCategory(String categoryName, [String? subcategoryName]) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_selectedType == TransactionType.income) {
+        _selectedIncomeCategory = categoryName;
+      } else {
+        _selectedExpenseCategory = categoryName;
+      }
+      _selectedSubcategory = subcategoryName;
+    });
+
+    final catSlug = categoryName.replaceAll(' ', '_');
+    final token = subcategoryName != null && subcategoryName.isNotEmpty
+        ? '/$catSlug:${subcategoryName.replaceAll(' ', '_')} '
+        : '/$catSlug ';
+
+    if (_activeTrigger.type == OmniTriggerType.category && _activeTrigger.startIndex >= 0) {
+      final current = _omniController.text;
+      final start = _activeTrigger.startIndex;
+      final end = _activeTrigger.endIndex;
+      final newText = current.replaceRange(start, end, token);
+      _omniController.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: start + token.length),
+      );
+    } else {
+      final current = _omniController.text;
+      final reg = RegExp(r'/\\S+');
+      if (reg.hasMatch(current)) {
+        final newText = current.replaceFirst(reg, token.trim());
+        _omniController.text = newText;
+      } else {
+        _omniController.text = current.isEmpty ? token : '$current $token';
+      }
+    }
+  }
+
+  // ── AUTO-ADVANCING BOTTOM SHEETS ──────────────────────────────────────────
+
+  Future<void> _openCategorySheet({bool autoAdvance = true}) async {
+    FocusScope.of(context).unfocus();
+    final allExpense = ref.read(allExpenseCategoriesProvider);
+    final allIncome = ref.read(allIncomeCategoriesProvider);
+    final subcats = ref.read(categorySubcategoriesProvider);
+    final disabledExp = ref.read(disabledExpenseCategoriesProvider);
+    final disabledInc = ref.read(disabledIncomeCategoriesProvider);
+
+    final availExp = allExpense.where((c) => !disabledExp.contains(c.name)).toList();
+    final availInc = allIncome.where((c) => !disabledInc.contains(c.name)).toList();
+
+    final result = await showCategorySelectionSheet(
+      context: context,
+      expenseCategories: availExp,
+      incomeCategories: availInc,
+      subcategoriesMap: subcats,
+      initialType: _selectedType,
+      selectedCategory: _selectedType == TransactionType.income ? _selectedIncomeCategory : _selectedExpenseCategory,
+      selectedSubcategory: _selectedSubcategory,
+    );
+
+    if (result != null && mounted) {
+      _selectCategory(result.categoryName, result.subcategoryName);
+
+      if (autoAdvance) {
+        if (_selectedType == TransactionType.transfer) {
+          if (_selectedAccountId == null) {
+            await Future.delayed(const Duration(milliseconds: 150));
+            if (mounted) _openAccountSheet(isFromAccount: true, autoAdvance: true);
+          } else if (_toAccountId == null) {
+            await Future.delayed(const Duration(milliseconds: 150));
+            if (mounted) _openAccountSheet(isFromAccount: false, autoAdvance: false);
+          }
+        } else {
+          if (_selectedAccountId == null) {
+            await Future.delayed(const Duration(milliseconds: 150));
+            if (mounted) _openAccountSheet(isFromAccount: true, autoAdvance: false);
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> _openAccountSheet({bool isFromAccount = true, bool autoAdvance = true}) async {
+    FocusScope.of(context).unfocus();
+    final accounts = ref.read(accountListProvider).value ?? const <AccountModel>[];
+    final disabledAccIds = ref.read(disabledAccountIdsProvider);
+    final availAccounts = accounts.where((a) => !disabledAccIds.contains(a.id)).toList();
+    final currencyFormat = ref.read(currencyFormatProvider);
+
+    final selectedAcc = await showAccountSelectionSheet(
+      context: context,
+      accountsList: availAccounts,
+      currencyFormat: currencyFormat,
+      selectedAccountId: isFromAccount ? _selectedAccountId : _toAccountId,
+      title: _selectedType == TransactionType.transfer
+          ? (isFromAccount ? 'Select From Account' : 'Select To Account')
+          : 'Select Account',
+      subtitle: _selectedType == TransactionType.transfer
+          ? (isFromAccount ? 'Account funds will be debited from.' : 'Account funds will be credited to.')
+          : 'Choose the account for this transaction.',
+    );
+
+    if (selectedAcc != null && mounted) {
+      _selectAccount(selectedAcc, isFromAccount: isFromAccount);
+
+      if (autoAdvance) {
+        if (_selectedType == TransactionType.transfer) {
+          if (isFromAccount && _toAccountId == null) {
+            await Future.delayed(const Duration(milliseconds: 150));
+            if (mounted) _openAccountSheet(isFromAccount: false, autoAdvance: true);
+          } else {
+            final hasTransferCat = _selectedExpenseCategory.isNotEmpty &&
+                _selectedExpenseCategory != 'Transfer' &&
+                _selectedExpenseCategory != 'Uncategorised';
+            if (!hasTransferCat) {
+              await Future.delayed(const Duration(milliseconds: 150));
+              if (mounted) _openCategorySheet(autoAdvance: false);
+            }
+          }
+        } else {
+          final hasCategory = _selectedType == TransactionType.income
+              ? _selectedIncomeCategory.isNotEmpty && _selectedIncomeCategory != 'Uncategorised'
+              : _selectedExpenseCategory.isNotEmpty && _selectedExpenseCategory != 'Uncategorised';
+          if (!hasCategory) {
+            await Future.delayed(const Duration(milliseconds: 150));
+            if (mounted) _openCategorySheet(autoAdvance: false);
+          }
+        }
+      }
+    }
+  }
+
+  void _openScanner() async {
+    HapticFeedback.lightImpact();
+    await AppRoutes.pushUnifiedScanner(context);
+  }
+
+  void _openRecurringSheet() async {
+    HapticFeedback.lightImpact();
+    final amountHint = evaluateAmountExpression(_amountExpression).amount;
+    final nameHint = _extractedDescription.isNotEmpty
+        ? _extractedDescription
+        : (_selectedType == TransactionType.income ? _selectedIncomeCategory : _selectedExpenseCategory);
+
+    final result = await showSubscriptionEditorSheet(
+      context,
+      initialRecurrence: _pendingRecurrence,
+      initialName: nameHint.isNotEmpty ? nameHint : null,
+      initialAmount: amountHint > 0 ? amountHint : null,
+      initialCategory: _selectedType == TransactionType.income ? _selectedIncomeCategory : _selectedExpenseCategory,
+    );
+
+    if (!mounted || result == null) return;
+    setState(() {
+      _recurringConfirmed = true;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('"${result.name}" saved to Recurring entries.'),
+        backgroundColor: AppColors.success,
+      ),
+    );
+  }
+
+  // ── OMNI BOX UI & SUGGESTIONS ─────────────────────────────────────────────
+
+  Widget _buildOmniCard({
+    required AmountExpressionResult amountState,
+    required bool canSubmit,
+  }) {
+    final isIncome = _selectedType == TransactionType.income;
+    final isTransfer = _selectedType == TransactionType.transfer;
+    final hintText = isTransfer
+        ? 'or Try 400 Pizza /Food @SBI_2234'
+        : isIncome
+            ? 'Try 50000 @bank /salary October bonus'
+            : 'Try 250 @cash /food #partynight with friends';
+
+    final caretColor = isIncome
+        ? AppColors.success
+        : isTransfer
+            ? AppColors.primaryBlue
+            : const Color(0xFFC23358);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 16,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Top Row: Currency [₹ v] | Date & Time Pill (1000040650.png) | Calculator [+-x=]
+          Row(
+            children: [
+              _buildCurrencySwitcher(),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Center(
+                  child: Material(
+                    color: const Color(0xFFEFF5FF),
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      onTap: _pickUnifiedDateTime,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.2)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.calendar_today_rounded,
+                              size: 14,
+                              color: AppColors.primaryBlue,
+                            ),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                DateFormat('EEE, d MMM, h:mm a').format(_selectedDate),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.textDark,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Material(
+                color: _showCalculator ? AppColors.primaryBlue.withValues(alpha: 0.1) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    setState(() {
+                      _showCalculator = !_showCalculator;
+                      if (!_showCalculator) {
+                        _omniFocusNode.requestFocus();
+                      }
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(
+                      Icons.calculate_outlined,
+                      size: 20,
+                      color: _showCalculator ? AppColors.primaryBlue : AppColors.textDark,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Omni Text Field
+          TextField(
+            controller: _omniController,
+            focusNode: _omniFocusNode,
+            keyboardType: TextInputType.text,
+            showCursor: true,
+            autofocus: true,
+            maxLines: 4,
+            minLines: 1,
+            cursorWidth: 3.0,
+            cursorHeight: 26.0,
+            cursorRadius: const Radius.circular(2),
+            cursorColor: caretColor,
+            textAlign: TextAlign.left,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textDark,
+              height: 1.35,
+            ),
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              hintText: hintText,
+              hintStyle: const TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 10),
+
+          // Bottom Row: ≡ Note (1000040650.png) & 📎 Attach Button on Right
+          Row(
+            children: [
+              const Icon(Icons.notes_rounded, size: 16, color: Color(0xFF94A3B8)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _extractedDescription.isNotEmpty
+                      ? _extractedDescription
+                      : 'Note',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: _extractedDescription.isNotEmpty ? FontWeight.w700 : FontWeight.w500,
+                    color: _extractedDescription.isNotEmpty ? AppColors.textDark : const Color(0xFF94A3B8),
+                  ),
+                ),
+              ),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _showAttachmentOptions,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(
+                      (_attachedImagePath != null || _attachedFilePath != null)
+                          ? Icons.attach_file_rounded
+                          : Icons.attach_file_outlined,
+                      size: 20,
+                      color: (_attachedImagePath != null || _attachedFilePath != null)
+                          ? AppColors.primaryBlue
+                          : const Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          _buildAttachmentPreviewCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDynamicSuggestionsOrPillsRow(
+    List<AccountModel> accounts,
+    List<ExpenseCategory> expenseCategories,
+    List<ExpenseCategory> incomeCategories,
+  ) {
+    final cats = _selectedType == TransactionType.income ? incomeCategories : expenseCategories;
+
+    if (_activeTrigger.type != OmniTriggerType.none) {
+      return _buildActiveSuggestionsBar(accounts, cats);
+    }
+
+    if (_selectedType == TransactionType.transfer) {
+      return _buildTransferPillsRow(accounts);
+    }
+
+    return _buildNormalPillsRow(accounts, cats);
+  }
+
+  Widget _buildActiveSuggestionsBar(List<AccountModel> accounts, List<ExpenseCategory> categories) {
+    if (_activeTrigger.type == OmniTriggerType.account || _activeTrigger.type == OmniTriggerType.toAccount) {
+      final query = _activeTrigger.query.toLowerCase();
+      final matching = accounts.where((a) => a.name.toLowerCase().contains(query)).toList();
+      final isFrom = _activeTrigger.type == OmniTriggerType.account;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Text(
+              isFrom ? 'ACCOUNTS' : 'TO ACCOUNT',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0091EA),
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          SizedBox(
+            height: 52,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: matching.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, i) {
+                final acc = matching[i];
+                return Material(
+                  color: const Color(0xFF1E222B),
+                  borderRadius: BorderRadius.circular(16),
+                  child: InkWell(
+                    onTap: () => _selectAccount(acc, isFromAccount: isFrom),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(resolveAccountIcon(acc.iconKey), size: 18, color: const Color(0xFF00B0FF)),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                acc.name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              Text(
+                                ref.read(currencyFormatProvider).format(acc.balance),
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_activeTrigger.type == OmniTriggerType.category) {
+      final query = _activeTrigger.query.toLowerCase();
+      final isTransfer = _selectedType == TransactionType.transfer;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 8),
+            child: Text(
+              'CATEGORIES',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF059669),
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          SizedBox(
+            height: 44,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: isTransfer
+                  ? CategorySelectionSheet.transferCategories
+                      .where((c) => c.name.toLowerCase().contains(query))
+                      .map((c) => _buildSuggestionCategoryPill(c.name, c.icon, c.color))
+                      .toList()
+                  : categories
+                      .where((c) => c.name.toLowerCase().contains(query))
+                      .map((c) => _buildSuggestionCategoryPill(c.name, c.icon, c.color))
+                      .toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  if (_activeTrigger.type == OmniTriggerType.tag) {
+    final query = _activeTrigger.query.toLowerCase();
+    final popular = ['Food', 'Travel', 'Shopping', 'Bills', 'Personal', 'Party', 'Work'];
+    final matching = popular.where((t) => t.toLowerCase().contains(query)).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            'TAGS',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFFDB2777),
+              letterSpacing: 0.8,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 44,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: matching.map((tag) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ActionChip(
+                  label: Text('#$tag'),
+                  backgroundColor: const Color(0xFFFCE7F3),
+                  labelStyle: const TextStyle(
+                    color: Color(0xFFDB2777),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                  shape: const StadiumBorder(),
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    final current = _omniController.text;
+                    final start = _activeTrigger.startIndex;
+                    final end = _activeTrigger.endIndex;
+                    final token = '#$tag ';
+                    final newText = current.replaceRange(start, end, token);
+                    _omniController.value = TextEditingValue(
+                      text: newText,
+                      selection: TextSelection.collapsed(offset: start + token.length),
+                    );
+                  },
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  return const SizedBox.shrink();
+}
+
+  Widget _buildSuggestionCategoryPill(String name, IconData icon, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ActionChip(
+        avatar: Icon(icon, size: 16, color: color),
+        label: Text(name),
+        backgroundColor: const Color(0xFF1E222B),
+        labelStyle: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
+        shape: StadiumBorder(side: BorderSide(color: color.withValues(alpha: 0.3))),
+        onPressed: () => _selectCategory(name),
+      ),
+    );
+  }
+
+  Widget _buildNormalPillsRow(List<AccountModel> accounts, List<ExpenseCategory> categories) {
+    final hasCategory = _selectedType == TransactionType.income
+        ? _selectedIncomeCategory.isNotEmpty && _selectedIncomeCategory != 'Uncategorised'
+        : _selectedExpenseCategory.isNotEmpty && _selectedExpenseCategory != 'Uncategorised';
+    final categoryLabel = _selectedType == TransactionType.income
+        ? _selectedIncomeCategory
+        : _selectedExpenseCategory;
+    final displayCategory = _selectedSubcategory != null && _selectedSubcategory!.isNotEmpty
+        ? '$categoryLabel • $_selectedSubcategory'
+        : categoryLabel;
+
+    final account = accounts.where((a) => a.id == _selectedAccountId).firstOrNull;
+    final hasAccount = account != null;
+
+    return Row(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: [
+                // (@ Account)
+                _buildPillItem(
+                  icon: hasAccount ? resolveAccountIcon(account.iconKey) : Icons.account_balance_wallet_outlined,
+                  iconColor: hasAccount ? const Color(0xFF0091EA) : AppColors.textMuted,
+                  label: hasAccount ? account.name : '(@ Account)',
+                  textColor: hasAccount ? const Color(0xFF0091EA) : AppColors.textMuted,
+                  backgroundColor: hasAccount ? const Color(0xFFE1F5FE) : const Color(0xFFF1F5F9),
+                  onTap: () => _openAccountSheet(isFromAccount: true, autoAdvance: true),
+                ),
+                const SizedBox(width: 8),
+
+                // (/ Category)
+                _buildPillItem(
+                  icon: hasCategory ? Icons.category_rounded : Icons.search_rounded,
+                  iconColor: hasCategory ? const Color(0xFF059669) : AppColors.textMuted,
+                  label: hasCategory ? displayCategory : '(/ Category)',
+                  textColor: hasCategory ? const Color(0xFF059669) : AppColors.textMuted,
+                  backgroundColor: hasCategory ? const Color(0xFFE8F5E9) : const Color(0xFFF1F5F9),
+                  onTap: () => _openCategorySheet(autoAdvance: true),
+                ),
+                const SizedBox(width: 8),
+
+                // Split (no +)
+                _buildPillItem(
+                  icon: Icons.call_split_rounded,
+                  iconColor: const Color(0xFFF59E0B),
+                  label: _selectedSplitParticipants.isNotEmpty
+                      ? '${_selectedSplitParticipants.length} Splits'
+                      : 'Split',
+                  textColor: const Color(0xFFF59E0B),
+                  backgroundColor: const Color(0xFFFEF3C7),
+                  onTap: () => _showSplitSelectorSheet(context),
+                ),
+
+                const SizedBox(width: 8),
+
+                // Scan (no %)
+                _buildPillItem(
+                  icon: Icons.qr_code_scanner_rounded,
+                  iconColor: const Color(0xFF0D9488),
+                  label: 'Scan',
+                  textColor: const Color(0xFF0D9488),
+                  backgroundColor: const Color(0xFFE6F4F1),
+                  onTap: _openScanner,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // Persistent Voice Button on Right
+        Material(
+          color: AppColors.primaryBlue.withValues(alpha: 0.1),
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: _openVoiceEntry,
+            child: const Padding(
+              padding: EdgeInsets.all(10),
+              child: Icon(Icons.mic_rounded, color: AppColors.primaryBlue, size: 20),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTransferPillsRow(List<AccountModel> accounts) {
+    final fromAccount = accounts.where((a) => a.id == _selectedAccountId).firstOrNull;
+    final toAccount = accounts.where((a) => a.id == _toAccountId).firstOrNull;
+    final hasTransferCat = _selectedExpenseCategory.isNotEmpty &&
+        _selectedExpenseCategory != 'Transfer' &&
+        _selectedExpenseCategory != 'Uncategorised';
+
+    return Row(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: [
+                _buildPillItem(
+                  icon: fromAccount != null
+                      ? resolveAccountIcon(fromAccount.iconKey)
+                      : Icons.arrow_outward_rounded,
+                  iconColor: fromAccount != null ? const Color(0xFF0091EA) : AppColors.textMuted,
+                  label: fromAccount != null ? '@ ${fromAccount.name}' : '(@ From Account)',
+                  textColor: fromAccount != null ? const Color(0xFF0091EA) : AppColors.textMuted,
+                  backgroundColor: fromAccount != null ? const Color(0xFFE1F5FE) : const Color(0xFFF1F5F9),
+                  onTap: () => _openAccountSheet(isFromAccount: true, autoAdvance: true),
+                ),
+                const SizedBox(width: 8),
+                _buildPillItem(
+                  icon: toAccount != null
+                      ? resolveAccountIcon(toAccount.iconKey)
+                      : Icons.arrow_downward_rounded,
+                  iconColor: toAccount != null ? const Color(0xFF7C3AED) : AppColors.textMuted,
+                  label: toAccount != null ? ': ${toAccount.name}' : '(: To Account)',
+                  textColor: toAccount != null ? const Color(0xFF7C3AED) : AppColors.textMuted,
+                  backgroundColor: toAccount != null ? const Color(0xFFF3E8FF) : const Color(0xFFF1F5F9),
+                  onTap: () => _openAccountSheet(isFromAccount: false, autoAdvance: true),
+                ),
+                const SizedBox(width: 8),
+                _buildPillItem(
+                  icon: Icons.sync_alt_rounded,
+                  iconColor: hasTransferCat ? const Color(0xFF059669) : AppColors.textMuted,
+                  label: hasTransferCat ? _selectedExpenseCategory : '(/ Category)',
+                  textColor: hasTransferCat ? const Color(0xFF059669) : AppColors.textMuted,
+                  backgroundColor: hasTransferCat ? const Color(0xFFE8F5E9) : const Color(0xFFF1F5F9),
+                  onTap: () => _openCategorySheet(autoAdvance: false),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Material(
+          color: AppColors.primaryBlue.withValues(alpha: 0.1),
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: _openVoiceEntry,
+            child: const Padding(
+              padding: EdgeInsets.all(10),
+              child: Icon(Icons.mic_rounded, color: AppColors.primaryBlue, size: 20),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPillItem({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required Color textColor,
+    required Color backgroundColor,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: backgroundColor,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: iconColor.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: iconColor),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: textColor,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -762,227 +1649,16 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
                     ),
                     const SizedBox(height: 20),
 
-                    // Premium Unified Input Card
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                      decoration: BoxDecoration(
-                        color: _shorthandExpandedFlash 
-                            ? AppColors.primaryBlue.withValues(alpha: 0.05) 
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: _shorthandExpandedFlash 
-                              ? AppColors.primaryBlue 
-                              : const Color(0xFFE2E8F0),
-                          width: _shorthandExpandedFlash ? 1.5 : 1.0,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _shorthandExpandedFlash
-                                ? AppColors.primaryBlue.withValues(alpha: 0.1)
-                                : const Color(0x0A000000),
-                            blurRadius: _shorthandExpandedFlash ? 20 : 16,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Top Row: Currency Dropdown + Amount Input + Calculator Toggle
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  _buildCurrencySwitcher(),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _amountController,
-                                      focusNode: _amountFocusNode,
-                                      keyboardType: TextInputType.text,
-                                      readOnly: _showCalculator,
-                                      showCursor: true,
-                                      autofocus: true,
-                                      cursorWidth: 3.0,
-                                      cursorHeight: 28.0,
-                                      cursorRadius: const Radius.circular(2),
-                                      cursorColor: _selectedType.isIncome
-                                          ? AppColors.success
-                                          : _selectedType.isTransfer
-                                              ? AppColors.primaryBlue
-                                              : const Color(0xFFC23358),
-                                      textAlign: TextAlign.left,
-                                      style: TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.w800,
-                                        color: _selectedType.isIncome
-                                            ? AppColors.success
-                                            : _selectedType.isTransfer
-                                                ? AppColors.primaryBlue
-                                                : AppColors.textDark,
-                                      ),
-                                      decoration: const InputDecoration(
-                                        border: InputBorder.none,
-                                        hintText: '',
-                                        isDense: true,
-                                      ),
-                                      onChanged: (val) {
-                                        // Check if the input is a pasted SMS transaction notification
-                                        if (val.length > 20 && SmsParserEngine.isTransactionalMessage(val)) {
-                                          final parsed = SmsParserEngine.parse(
-                                            senderAddress: 'PASTED',
-                                            body: val,
-                                            receivedAt: DateTime.now(),
-                                          );
-                                          if (parsed != null) {
-                                            setState(() {
-                                              _amountExpression = formatAmountExpressionValue(parsed.amount);
-                                              _selectedType = parsed.type;
-                                              if (parsed.type == TransactionType.income) {
-                                                if (parsed.suggestedCategory != null) {
-                                                  _selectedIncomeCategory = parsed.suggestedCategory!;
-                                                }
-                                              } else {
-                                                if (parsed.suggestedCategory != null) {
-                                                  _selectedExpenseCategory = parsed.suggestedCategory!;
-                                                }
-                                              }
-                                              _noteController.text = parsed.notes;
-                                              _syncAmountController();
-                                            });
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(
-                                                content: Text('SMS transaction parsed & auto-filled!'),
-                                                backgroundColor: AppColors.success,
-                                              ),
-                                            );
-                                            return;
-                                          }
-                                        }
+                    // Omni Input Box Card
+                    _buildOmniCard(amountState: amountState, canSubmit: canSubmit),
+                    const SizedBox(height: 14),
 
-                                        setState(() {
-                                          _amountExpression = val;
-                                        });
-                                        _parseUnifiedQuery(
-                                          val,
-                                          accounts: selectionAccounts,
-                                          expenseCategories: availableExpenseCategories,
-                                          incomeCategories: availableIncomeCategories,
-                                        );
-                                      },
-                                    ),
-                                  ),
-
-                                ],
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 24, thickness: 1, color: Color(0xFFEDF2F7)),
-
-                          // Second Row: Note field with tips support
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (_noteFocusNode.hasFocus && _getMatchingShorthands().isNotEmpty) ...[
-                                SizedBox(
-                                  height: 38,
-                                  child: ListView(
-                                    scrollDirection: Axis.horizontal,
-                                    children: _getMatchingShorthands().map((tag) {
-                                      return Padding(
-                                        padding: const EdgeInsets.only(right: 8.0),
-                                        child: ActionChip(
-                                          label: Text('?${tag.name}'),
-                                          labelStyle: const TextStyle(
-                                            color: Color(0xFF475569),
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 12,
-                                          ),
-                                          backgroundColor: const Color(0xFFF1F5F9),
-                                          shape: const StadiumBorder(
-                                            side: BorderSide(color: Color(0xFFE2E8F0)),
-                                          ),
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                                          onPressed: () {
-                                            HapticFeedback.lightImpact();
-                                            _selectShorthandSuggestion(tag);
-                                          },
-                                        ),
-                                      );
-                                    }).toList(),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                              ],
-                              TextField(
-                                controller: _noteController,
-                                focusNode: _noteFocusNode,
-                                textAlign: TextAlign.left,
-                                textInputAction: TextInputAction.done,
-                                decoration: InputDecoration(
-                                  hintText: _currentHintText,
-                                  hintStyle: const TextStyle(
-                                    color: AppColors.textMuted,
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 14,
-                                  ),
-                                  border: InputBorder.none,
-                                  isDense: true,
-                                ),
-                              ),
-                              _buildAttachmentPreviewCard(),
-                            ],
-                          ),
-                          const Divider(height: 24, thickness: 1, color: Color(0xFFEDF2F7)),
-
-                          // Third Row: Action chips row with accent colors, custom location and scan chips
-                          Row(
-                            children: [
-                              Expanded(
-                                child: SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: Row(
-                                    children: [
-                                      _buildActionChip('@ Account'),
-                                      _buildActionChip('/ Category'),
-                                      _buildActionChip('# tags'),
-                                      _buildActionChip('+ Splits'),
-                                      _buildActionChip('! Recurring'),
-                                      _buildLocationChip(),
-                                      _buildActionChip('% Scan'),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                    // Dynamic Suggestions Carousel or Pills Row
+                    _buildDynamicSuggestionsOrPillsRow(
+                      selectionAccounts,
+                      availableExpenseCategories,
+                      availableIncomeCategories,
                     ),
-
-                    // Date/Time + Location Row (Location toggle moved to chips, only DateTime left)
-                    _buildDateTimeAndLocationRow(),
-
-                    // Middle Section (Dynamic Preview Panel)
-                    if (_activePreviewChip != null) ...[
-                      const SizedBox(height: 12),
-                      if (_activePreviewChip == 'Account')
-                        _buildAccountPreview(selectionAccounts),
-                      if (_activePreviewChip == 'Category')
-                        _buildCategoryPreview(availableExpenseCategories, availableIncomeCategories, subcategoriesMap),
-                      if (_activePreviewChip == 'Tags')
-                        _buildTagsPreview(),
-                      if (_activePreviewChip == 'Split')
-                        _buildSplitPreview(),
-                      if (_activePreviewChip == 'Scan')
-                        _buildScanPreview(),
-                      if (_activePreviewChip == 'Recurring')
-                        _buildRecurringPreview(),
-                    ],
 
                   ],
                 ),
@@ -1206,152 +1882,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
     );
   }
 
-  Widget _buildLocationChip() {
-    final isSelected = _locationEnabled;
-    final isFetching = _isFetchingLocation;
-    const accentColor = AppColors.primaryBlue;
-    const disabledBg = Color(0xFFF4F6FA);
-    const disabledText = AppColors.textMuted;
 
-    String labelText = 'Location';
-    if (isFetching) {
-      labelText = 'Fetching...';
-    } else if (isSelected && _latitude != null && _longitude != null) {
-      labelText = '${_latitude!.toStringAsFixed(2)}, ${_longitude!.toStringAsFixed(2)}';
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8.0),
-      child: Material(
-        color: isSelected ? accentColor : disabledBg,
-        borderRadius: BorderRadius.circular(20),
-        child: InkWell(
-          onTap: isFetching ? null : _toggleLocation,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (isFetching) ...[
-                  const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.0,
-                      valueColor: AlwaysStoppedAnimation<Color>(disabledText),
-                    ),
-                  ),
-                ] else ...[
-                  Icon(
-                    isSelected ? Icons.location_on : Icons.location_on_outlined,
-                    size: 16,
-                    color: isSelected ? Colors.white : disabledText,
-                  ),
-                ],
-                const SizedBox(width: 6),
-                Text(
-                  labelText,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : disabledText,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _toggleLocation() async {
-    if (_locationEnabled) {
-      setState(() {
-        _locationEnabled = false;
-        _latitude = null;
-        _longitude = null;
-      });
-      return;
-    }
-
-    setState(() {
-      _isFetchingLocation = true;
-    });
-
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Location services are disabled. Please enable location services.'),
-          ),
-        );
-        setState(() {
-          _isFetchingLocation = false;
-        });
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permissions are denied.')),
-          );
-          setState(() {
-            _isFetchingLocation = false;
-          });
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Location permissions are permanently denied. Please enable them in system settings.'),
-          ),
-        );
-        setState(() {
-          _isFetchingLocation = false;
-        });
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 8),
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _locationEnabled = true;
-        _latitude = position.latitude;
-        _longitude = position.longitude;
-        _isFetchingLocation = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Location acquired: ${_latitude!.toStringAsFixed(4)}, ${_longitude!.toStringAsFixed(4)}'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isFetchingLocation = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to fetch location: $e')),
-      );
-    }
-  }
 
 
 
@@ -2656,31 +3187,58 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
   Widget _buildSaveButton({required bool canSubmit}) {
     final isUpi = widget.isPayMode && !_paymentDone;
     return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: FilledButton.icon(
-        style: FilledButton.styleFrom(
-          backgroundColor: AppColors.primaryBlue,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          elevation: canSubmit ? 2 : 0,
-        ),
-        onPressed: canSubmit
-            ? (isUpi ? _launchUpiPayment : _saveExpense)
-            : null,
-        icon: _isSaving || _isLaunching
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+      height: 54,
+      child: Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: 54,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primaryBlue,
+                  shape: const StadiumBorder(),
+                  elevation: canSubmit ? 2 : 0,
                 ),
-              )
-            : const Icon(Icons.check_rounded, size: 20),
-        label: Text(
-          isUpi ? 'Pay via UPI' : 'Save Transaction',
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-        ),
+                onPressed: canSubmit
+                    ? (isUpi ? _launchUpiPayment : () => _saveExpense())
+                    : null,
+                icon: _isSaving || _isLaunching
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Icon(Icons.save_rounded, size: 20),
+                label: Text(
+                  isUpi ? 'Pay via UPI' : 'Add transaction',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: canSubmit ? AppColors.primaryBlue : const Color(0xFFE2E8F0),
+            shape: const StadiumBorder(),
+            elevation: canSubmit ? 2 : 0,
+            child: InkWell(
+              onTap: canSubmit ? _showSaveSplitMenu : null,
+              customBorder: const StadiumBorder(),
+              child: SizedBox(
+                width: 58,
+                height: 54,
+                child: Icon(
+                  Icons.keyboard_arrow_up_rounded,
+                  color: canSubmit ? Colors.white : AppColors.textMuted,
+                  size: 26,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3143,7 +3701,87 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
     // fires on resume, which schedules the "Payment Complete?" dialog.
   }
 
-  Future<void> _saveExpense() async {
+  
+  void _openVoiceEntry() async {
+    HapticFeedback.lightImpact();
+    final parsed = await showVoiceEntrySheet(context, returnResult: true);
+    if (parsed != null && mounted) {
+      setState(() {
+        _amountExpression = formatAmountExpressionValue(parsed.amount);
+        _selectedType = parsed.type;
+        if (parsed.type == TransactionType.income) {
+          _selectedIncomeCategory = parsed.category.isNotEmpty
+              ? parsed.category
+              : _selectedIncomeCategory;
+        } else {
+          _selectedExpenseCategory = parsed.category.isNotEmpty
+              ? parsed.category
+              : _selectedExpenseCategory;
+        }
+        if (parsed.note.isNotEmpty) {
+          _noteController.text = parsed.note;
+        }
+      });
+    }
+  }
+
+  void _showSaveSplitMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFEFF6FF),
+                  child: Icon(Icons.add_task_rounded, color: AppColors.primaryBlue),
+                ),
+                title: const Text('Save and add another', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Saves this transaction and clears inputs for next entry'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _saveExpense(andAddAnother: true);
+                },
+              ),
+              const Divider(height: 1, color: Color(0xFFEDF2F7)),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFF1F5F9),
+                  child: Icon(Icons.bookmark_border_rounded, color: AppColors.textDark),
+                ),
+                title: const Text('Save as Template', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Reusable preset for frequent spending'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Template saved successfully!')),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveExpense({bool andAddAnother = false}) async {
     if (_isSaving) {
       return;
     }
@@ -3191,8 +3829,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
             accountId: selectedAccount?.id,
             toAccountId: toAccount?.id,
             type: TransactionType.transfer,
-            latitude: _locationEnabled ? _latitude : null,
-            longitude: _locationEnabled ? _longitude : null,
+            latitude: null,
+            longitude: null,
           );
         } else {
           await controller.addTransfer(
@@ -3201,8 +3839,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
             toAccountId: toAccount!.id,
             date: _selectedDate,
             note: _noteController.text,
-            latitude: _locationEnabled ? _latitude : null,
-            longitude: _locationEnabled ? _longitude : null,
+            latitude: null,
+            longitude: null,
           );
         }
       } else if (widget.isEditing) {
@@ -3217,8 +3855,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
           accountId: selectedAccount?.id,
           type: _selectedType,
           subcategory: _selectedSubcategory,
-          latitude: _locationEnabled ? _latitude : null,
-          longitude: _locationEnabled ? _longitude : null,
+          latitude: null,
+          longitude: null,
           splitMethod: splitMethod,
           paidByParticipantId: paidByParticipantId,
         );
@@ -3233,17 +3871,70 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen>
           accountId: selectedAccount?.id,
           type: _selectedType,
           subcategory: _selectedSubcategory,
-          latitude: _locationEnabled ? _latitude : null,
-          longitude: _locationEnabled ? _longitude : null,
+          latitude: null,
+          longitude: null,
           splitMethod: splitMethod,
           paidByParticipantId: paidByParticipantId,
         );
+
+        if (hasSplit && _selectedSplitParticipants.length > 1) {
+          final totalAmount = amountState.amount;
+          final perPersonEqual = totalAmount / _selectedSplitParticipants.length;
+          final payerId = _paidByParticipantId;
+          final payer = _selectedSplitParticipants.firstWhere(
+            (p) => p.id == payerId,
+            orElse: () => ParticipantModel(id: 'you', name: 'You'),
+          );
+
+          final settlementController = ref.read(settlementControllerProvider);
+          for (final p in _selectedSplitParticipants) {
+            if (p.id == payerId) continue;
+            final share = _splitMethod == 'Equal'
+                ? perPersonEqual
+                : (_splitValues[p.id] ?? perPersonEqual);
+            if (share <= 0) continue;
+
+            await settlementController.createSettlement(
+              fromParticipantId: p.id,
+              fromParticipantName: p.name,
+              toParticipantId: payer.id,
+              toParticipantName: payer.name,
+              amount: share,
+              expenseDescription: _noteController.text.isNotEmpty
+                  ? _noteController.text
+                  : 'Split expense of ${totalAmount.toStringAsFixed(0)}',
+            );
+          }
+        }
       }
 
       if (!mounted) {
         return;
       }
-      Navigator.of(context).pop();
+      if (andAddAnother) {
+        _omniController.clear();
+        _amountController.clear();
+        _noteController.clear();
+        setState(() {
+          _amountExpression = '';
+          _extractedDescription = '';
+          _attachedImagePath = null;
+          _attachedFilePath = null;
+          _selectedSplitParticipants.clear();
+          _selectedExpenseCategory = 'Uncategorised';
+          _selectedSubcategory = null;
+          _hasExplicitAccountChoice = false;
+        });
+        _omniFocusNode.requestFocus();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Transaction saved! Ready for next.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        Navigator.of(context).pop();
+      }
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);

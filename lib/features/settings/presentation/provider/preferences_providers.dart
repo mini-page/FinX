@@ -177,8 +177,22 @@ final navbarTabsProvider = Provider<List<String>>((ref) {
   final json = ref.watch(appPreferencesProvider).value?.navbarTabsJson ?? '';
   if (json.isEmpty) return defaultNavBarTabIds;
   try {
-    final list = (jsonDecode(json) as List).cast<String>();
-    if (list.length >= 3) return list;
+    var list = (jsonDecode(json) as List).cast<String>();
+    // Sanitize: remove duplicate accounts and removed tools (radar, budget)
+    list = list.where((id) => id != 'radar' && id != 'budget' && id != 'accounts').toList();
+    // Ensure home is at index 0
+    list.remove('home');
+    list.insert(0, 'home');
+    // Ensure tools is present
+    if (!list.contains('tools')) {
+      list.add('tools');
+    }
+    // Deduplicate preserving order
+    final uniqueList = <String>[];
+    for (final id in list) {
+      if (!uniqueList.contains(id)) uniqueList.add(id);
+    }
+    if (uniqueList.length >= 3) return uniqueList;
     return defaultNavBarTabIds;
   } catch (_) {
     return defaultNavBarTabIds;
@@ -195,15 +209,36 @@ final builtInIncomeCategoryOverridesProvider =
   return builtInOverridesFromJson(json);
 });
 
+final deletedExpenseCategoriesProvider = Provider<Set<String>>((ref) {
+  final json = ref.watch(appPreferencesProvider).value?.deletedExpenseCategoriesJson ?? '';
+  if (json.isEmpty) return const <String>{};
+  try {
+    return (jsonDecode(json) as List).cast<String>().toSet();
+  } catch (_) {
+    return const <String>{};
+  }
+});
+
+final deletedIncomeCategoriesProvider = Provider<Set<String>>((ref) {
+  final json = ref.watch(appPreferencesProvider).value?.deletedIncomeCategoriesJson ?? '';
+  if (json.isEmpty) return const <String>{};
+  try {
+    return (jsonDecode(json) as List).cast<String>().toSet();
+  } catch (_) {
+    return const <String>{};
+  }
+});
+
 /// All expense categories: built-in list (with user overrides) + user-defined custom categories.
 final allExpenseCategoriesProvider = Provider<List<ExpenseCategory>>((ref) {
   final custom = ref.watch(customExpenseCategoryListProvider);
   final overrides = ref.watch(builtInExpenseCategoryOverridesProvider);
+  final deleted = ref.watch(deletedExpenseCategoriesProvider);
   final overridesMap = <String, BuiltInCategoryOverride>{
     for (final o in overrides) o.name: o,
   };
   return <ExpenseCategory>[
-    ...expenseCategories.map((c) {
+    ...expenseCategories.where((c) => !deleted.contains(c.name)).map((c) {
       final override = overridesMap[c.name];
       if (override == null) return c;
       return ExpenseCategory(
@@ -213,7 +248,7 @@ final allExpenseCategoriesProvider = Provider<List<ExpenseCategory>>((ref) {
         iconKey: override.iconKey,
       );
     }),
-    ...custom.map(
+    ...custom.where((c) => !deleted.contains(c.name)).map(
       (c) => ExpenseCategory(
         name: c.name,
         icon: categoryIconFromKey(c.iconKey),
@@ -228,11 +263,12 @@ final allExpenseCategoriesProvider = Provider<List<ExpenseCategory>>((ref) {
 final allIncomeCategoriesProvider = Provider<List<ExpenseCategory>>((ref) {
   final custom = ref.watch(customIncomeCategoryListProvider);
   final overrides = ref.watch(builtInIncomeCategoryOverridesProvider);
+  final deleted = ref.watch(deletedIncomeCategoriesProvider);
   final overridesMap = <String, BuiltInCategoryOverride>{
     for (final o in overrides) o.name: o,
   };
   return <ExpenseCategory>[
-    ...incomeCategories.map((c) {
+    ...incomeCategories.where((c) => !deleted.contains(c.name)).map((c) {
       final override = overridesMap[c.name];
       if (override == null) return c;
       return ExpenseCategory(
@@ -242,7 +278,7 @@ final allIncomeCategoriesProvider = Provider<List<ExpenseCategory>>((ref) {
         iconKey: override.iconKey,
       );
     }),
-    ...custom.map(
+    ...custom.where((c) => !deleted.contains(c.name)).map(
       (c) => ExpenseCategory(
         name: c.name,
         icon: categoryIconFromKey(c.iconKey),
@@ -620,6 +656,54 @@ class AppPreferencesController {
             customIncomeCategoriesJson: customCategoriesToJson(list),
           ),
         );
+  }
+
+  Future<void> deleteBuiltInExpenseCategory(String name) async {
+    final deleted = Set<String>.from(
+      _current.deletedExpenseCategoriesJson.isEmpty
+          ? <String>[]
+          : (jsonDecode(_current.deletedExpenseCategoriesJson) as List).cast<String>(),
+    );
+    deleted.add(name);
+    await _ref.read(appPreferencesProvider.notifier).save(
+          _current.copyWith(
+            deletedExpenseCategoriesJson: jsonEncode(deleted.toList()),
+          ),
+        );
+  }
+
+  Future<void> deleteBuiltInIncomeCategory(String name) async {
+    final deleted = Set<String>.from(
+      _current.deletedIncomeCategoriesJson.isEmpty
+          ? <String>[]
+          : (jsonDecode(_current.deletedIncomeCategoriesJson) as List).cast<String>(),
+    );
+    deleted.add(name);
+    await _ref.read(appPreferencesProvider.notifier).save(
+          _current.copyWith(
+            deletedIncomeCategoriesJson: jsonEncode(deleted.toList()),
+          ),
+        );
+  }
+
+  Future<void> deleteCategory({
+    required String name,
+    required bool isExpense,
+    String? customId,
+  }) async {
+    if (customId != null && customId.isNotEmpty) {
+      if (isExpense) {
+        await removeExpenseCategory(customId);
+      } else {
+        await removeIncomeCategory(customId);
+      }
+    } else {
+      if (isExpense) {
+        await deleteBuiltInExpenseCategory(name);
+      } else {
+        await deleteBuiltInIncomeCategory(name);
+      }
+    }
   }
 
   Future<void> setExpenseCategoryEnabled(

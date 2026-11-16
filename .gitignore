@@ -70,3 +70,6 @@ linux/
 benchmark/
 public_assets/
 .gitnexus
+.adb_device
+screenshots/
+graphify-out/

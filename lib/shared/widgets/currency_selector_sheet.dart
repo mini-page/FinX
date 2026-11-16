@@ -95,88 +95,89 @@ class _CurrencySelectorSheetState extends State<_CurrencySelectorSheet> {
           c.symbol.toLowerCase().contains(_searchQuery);
     }).toList();
 
-    return SafeArea(
-      minimum: EdgeInsets.only(bottom: bottomPadding),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x1A000000),
-              blurRadius: 32,
-              offset: Offset(0, -4),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Top Drag Handle
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.textMuted.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.80,
+      ),
+      margin: EdgeInsets.only(bottom: bottomPadding),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x1A000000),
+            blurRadius: 32,
+            offset: Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Top Drag Handle
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textMuted.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
+          ),
 
-            // Header Row: Title on left, Search Icon and '✕' Cross Button on right
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Select Currency',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textDark,
-                        letterSpacing: -0.3,
-                      ),
+          // Header Row: Title on left, Search Icon and '✕' Cross Button on right
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Select Currency',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.textDark,
+                      letterSpacing: -0.3,
                     ),
                   ),
+                ),
 
-                  // Toggle Search Icon Button (items > 10)
-                  IconButton(
-                    icon: Icon(
-                      _isSearchOpen ? Icons.close_rounded : Icons.search_rounded,
-                      size: 20,
-                      color: _isSearchOpen ? AppColors.accentPurple : AppColors.textDark,
-                    ),
-                    tooltip: 'Toggle Search',
-                    onPressed: () {
-                      setState(() {
-                        _isSearchOpen = !_isSearchOpen;
-                        if (!_isSearchOpen) {
-                          _searchQuery = '';
-                          _searchController.clear();
-                        }
-                      });
-                    },
+                // Toggle Search Icon Button (items > 10)
+                IconButton(
+                  icon: Icon(
+                    Icons.search_rounded,
+                    size: 20,
+                    color: _isSearchOpen ? AppColors.accentPurple : AppColors.textDark,
                   ),
+                  tooltip: 'Toggle Search',
+                  onPressed: () {
+                    setState(() {
+                      _isSearchOpen = !_isSearchOpen;
+                      if (!_isSearchOpen) {
+                        _searchQuery = '';
+                        _searchController.clear();
+                      }
+                    });
+                  },
+                ),
 
-                  // Cross '✕' Dismiss Button
-                  IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: AppColors.textMuted,
-                      size: 20,
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
+                // Cross '✕' Dismiss Button
+                IconButton(
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: AppColors.textMuted,
+                    size: 20,
                   ),
-                ],
-              ),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
             ),
+          ),
 
             // Expandable Search Bar
             AnimatedSize(
@@ -200,7 +201,8 @@ class _CurrencySelectorSheetState extends State<_CurrencySelectorSheet> {
             // Currencies List
             ConstrainedBox(
               constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.48,
+                maxHeight: (MediaQuery.of(context).size.height - bottomPadding - MediaQuery.of(context).padding.top - 180)
+                    .clamp(140.0, MediaQuery.of(context).size.height * 0.48),
               ),
               child: filtered.isEmpty
                   ? const Center(
@@ -327,7 +329,6 @@ class _CurrencySelectorSheetState extends State<_CurrencySelectorSheet> {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }

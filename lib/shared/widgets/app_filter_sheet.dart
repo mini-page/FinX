@@ -263,7 +263,8 @@ class _SingleSelectSheetState<T> extends State<_SingleSelectSheet<T>> {
               ),
             ConstrainedBox(
               constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.55,
+                maxHeight: (MediaQuery.sizeOf(context).height - bottomPad - MediaQuery.paddingOf(context).top - 180)
+                    .clamp(140.0, MediaQuery.sizeOf(context).height * 0.55),
               ),
               child: filtered.isEmpty
                   ? const Padding(
@@ -478,7 +479,8 @@ class _MultiSelectSheetState<T> extends State<_MultiSelectSheet<T>> {
               ),
             ConstrainedBox(
               constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.55,
+                maxHeight: (MediaQuery.sizeOf(context).height - bottomPad - MediaQuery.paddingOf(context).top - 180)
+                    .clamp(140.0, MediaQuery.sizeOf(context).height * 0.55),
               ),
               child: filtered.isEmpty
                   ? const Padding(
